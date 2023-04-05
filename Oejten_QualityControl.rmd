@@ -1,0 +1,102 @@
+---
+title: "Quality Control of the Data for Oejten"
+output: html_notebook
+---
+
+
+# Load data
+## Load libraries and make folders
+```{r load libraries}
+rm(list = ls())
+suppressMessages(library(dplyr))
+suppressMessages(library(Seurat))
+suppressMessages(library(patchwork))
+suppressMessages(library(ggplot2))
+# make folders, if they don't exist
+# results
+if (!dir.exists("results")) {
+  dir.create("results")
+}
+# results/figures
+if (!dir.exists("results/figures")) {
+  dir.create("results/figures")
+}
+
+```
+
+## Load data
+```{r load data}
+# Load the .rds object created in the previous step
+# see more in Oejten_CreateSeuratObject.Rmd
+
+bm <- readRDS("data/seurat_obj/Oejten_scRNAseq.rds")
+bm
+```
+```
+```
+
+# Preprocessing
+## Add more QC metrics.
+It is interesting to add metrics such as the number of mitochondrial or ribosomal genes.
+```{r add more QC metrics}
+# calculate the number of mitochondrial genes
+bm <- PercentageFeatureSet(bm, pattern = "^MT-", col.name = "percent.mt")
+# calculate the number of ribosomal genes
+bm <- PercentageFeatureSet(bm, pattern = "^RPS|^RPL", col.name = "percent.ribo")
+# add short name for sample origin
+# e.g. "GSM339161_A" -> "A"
+bm[["sample"]] <- strsplit(bm$orig.ident, "_") %>% sapply(function(x) x[2])
+# see the new metrics
+head(bm@meta.data, 5)
+```
+
+It is worth noting that the counts seem to be integers.
+This is indicates that the data is not normalized.
+
+## Visualize the QC metrics
+```{r visualize the QC metrics}
+# plot the QC metrics
+bm %>%
+  VlnPlot(
+    features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.ribo"),
+    group.by = "sample",
+    ncol = 2, pt.size = 0
+  ) -> qc_plot
+qc_plot
+# save plot to file
+ggsave("results/figures/Oejten_QC_metrics.png",
+       plot = qc_plot, dpi = 300,
+       width = 10, height = 10)
+```
+
+### Relationship against metrics
+We expect the number of features and counts to be positively correlated.
+```{r relationship against metrics}
+# plot the relationship between the number of features and counts
+bm %>%
+        FeatureScatter(
+          feature1 = "nFeature_RNA",
+          feature2 = "nCount_RNA",
+          group.by = "sample"
+        ) -> qc_plot
+qc_plot
+# save plot to file
+ggsave("results/figures/Oejten_QC_metrics_relationship.png",
+       plot = qc_plot, dpi = 300,
+       width = 10, height = 10)
+```
+
+# Filtering
+The filtering is done as stated in the paper.
+We filter out those with less than 500 genes and more than 8% mitochondrial genes.
+```{r filtering}
+bm <- subset(bm, subset = nFeature_RNA > 500 & percent.mt < 8)
+```
+
+
+
+# Normalisation
+## Log normalisation
+```{r log normalisation}
+bm <- NormalizeData(bm, normalization.method = "LogNormalize", scale.factor = 10000)
+```
