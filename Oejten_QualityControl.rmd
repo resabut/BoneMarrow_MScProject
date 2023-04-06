@@ -183,7 +183,7 @@ bm %>%
 pca_loadings
 # plot pca
 bm %>%
-  DimPlot(reduction = "pca") -> pca_plot
+  DimPlot(reduction = "pca", group.by = "sample") -> pca_plot
 pca_plot
 # save plots to file
 ggsave("results/figures/Oejten_PCA_loadings.png",
@@ -193,6 +193,7 @@ ggsave("results/figures/Oejten_PCA.png",
        plot = pca_plot, dpi = 300,
        width = 10, height = 10)
 ```
+
 To me it looks like the first PC is separating a very small set of the cells from the rest.
 
 
@@ -214,12 +215,12 @@ How many dimensions do we need to capture most of the variance?
 
 ## Jackstraw plot
 We can use the jackstraw plot to estimate the number of dimensions needed to capture most of the variance.
-```{r jackstraw plot, eval = FALSE}
+```{r jackstraw plot, eval = TRUE}
 # run jackstraw
-bm <- JackStraw(bm, num.replicate = 100, dims = 30)
-bm <- ScoreJackStraw(bm, dims = 1:30)
+bm <- JackStraw(bm, num.replicate = 100, dims = 50)
+bm <- ScoreJackStraw(bm, dims = 1:50)
 # plot jackstraw
-JackStrawPlot(bm, dims = 1:30) -> jackstraw_plot
+JackStrawPlot(bm, dims = 1:50) -> jackstraw_plot
 jackstraw_plot
 # save plot to file
 ggsave("results/figures/Oejten_jackstraw.png",
