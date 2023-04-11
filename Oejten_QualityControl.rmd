@@ -21,7 +21,10 @@ if (!dir.exists("results")) {
 if (!dir.exists("results/figures")) {
   dir.create("results/figures")
 }
-
+# results/tables
+if (!dir.exists("results/tables")) {
+  dir.create("results/tables")
+}
 ```
 
 ## Load data
@@ -194,7 +197,7 @@ ggsave("results/figures/Oejten_PCA.png",
        width = 10, height = 10)
 ```
 
-To me it looks like the first PC is separating a very small set of the cells from the rest.
+To me, it looks like the first PC is separating a very small set of the cells from the rest.
 
 
 ### Plot a heatmap of the PCs
@@ -228,7 +231,7 @@ ggsave("results/figures/Oejten_jackstraw.png",
        width = 10, height = 10)
 ```
 
-Signficance is conserved even at 30 dimensions.
+Significance is conserved even at 30 dimensions.
 
 ## Elbow plot
 We can also use the elbow plot to estimate the number of dimensions needed to capture most of the variance.
@@ -249,6 +252,7 @@ Elbow plot suggest that we need at least 20 dimensions to capture most of the va
 ## find neighbours and clusters
 We can use the FindNeighbors function to find the neighbours of each cell and the FindClusters function to cluster the cells.
 ```{r find neighbours and clusters}
+plan("multisession", workers = 40)
 bm <- FindNeighbors(bm,
                     dims = 1:20
                     )
@@ -292,15 +296,18 @@ ggsave("results/figures/Oejten_umap.png",
 
 We can use the FindAllMarkers function to find marker genes for each cluster.
 ```{r find marker genes}
-bm <- FindAllMarkers(bm,
+# parallelize
+plan("multisession", workers = 10)
+# find markers
+bm.markers <- FindAllMarkers(bm,
                      only.pos = TRUE,
                      min.pct = 0.25,
                      logfc.threshold = 0.25
                      )
 bm.markers %>%
     group_by(cluster) %>%
-    slice_max(n = 20, order_by = avg_logFC) -> top20markers
-top20markers
+    slice_max(n = 20, order_by = avg_log2FC) -> top20markers
+
 # save to file
 write.csv(top20markers, "results/tables/Oejten_top20markers.csv")
 ```
@@ -309,22 +316,22 @@ write.csv(top20markers, "results/tables/Oejten_top20markers.csv")
 We can plot some of the markers genes to see if they are indeed markers.
 
 The reference paper lists these 4 markers as examples.
-- CD3D
-- HBD
-- CD79A
-- NKG7
+- CD3D: expressed in T cells, it is the delta chain of the T cell receptor
+- HBD: it is Hemoglobin beta chain, expressed in erythrocytes
+- CD79A: expressed in B cells, it is the alpha chain of the B cell receptor
+- NKG7: expressed in NK cells, it is the ligand for the NK cell receptor NKG2D
+- CD14: expressed in monocytes
 
 ```{r plot marker genes}
 # violin plots
 bm %>%
-  VlnPlot(feature = c("CD3D", "HBD", "CD79A", "NKG7"),
-          group.by = "cluster") -> marker_genes_vplot
+  VlnPlot(feature = c("CD3D", "HBD", "CD79A", "NKG7", "CD14") ) -> marker_genes_vplot
 marker_genes_vplot
 # on umap
 bm %>%
-  FeaturePlot(feature = c("CD3D", "HBD", "CD79A", "NKG7"),
+  FeaturePlot(feature = c("CD3D", "HBD", "CD79A", "NKG7", "CD14"),
               cols = c("black", "red"),
-              pt.size = 0.5) -> marker_genes_fplot
+              pt.size = 0.005) -> marker_genes_fplot
 marker_genes_fplot
 # save plots to file
 ggsave("results/figures/Oejten_marker_genes_violin.png",
@@ -335,13 +342,51 @@ ggsave("results/figures/Oejten_marker_genes_umap.png",
          width = 10, height = 10)
 ```
 
+The FeaturePlot makes sense. NKG7 and CD3D are expressed in the NK and T cells, respectively. They are somewhat related
+when it comes to transcriptional profiles.
 
 
+## Heatmap of marker genes
+We can also plot a heatmap of the marker genes.
+```{r heatmap of marker genes}
+bm.markers %>%
+  group_by(cluster) %>%
+  top_n(n = 5, wt = avg_log2FC) -> top5markers
+
+DoHeatmap(subset(bm, downsample = 100), features = top5markers$gene) -> marker_genes_heatmap
+marker_genes_heatmap
+# save plot to file
+ggsave("results/figures/Oejten_marker_genes_heatmap.png",
+       plot = marker_genes_heatmap, dpi = 300,
+       width = 10, height = 10)
+```
+
+Warning in DoHeatmap(bm, features = top5markers$gene) :
+  The following features were omitted as they were not found in the scale. Data slot for the RNA: GLTSCR2, çIFITM1, RPS26, GIMAP7, AC090498.1, TRAC, CCR7, RPS12, RPLP2, LTB, RPL30, JUNB
 
 
+They are not found there probably because they do not show variation. We only scaled the variable genes.
+How is it possible that they are markers if they are not variable features?
+Variable features show variation across all cells.
+Maybe it is better to scale all genes and then find the markers.
+
+
+Also, it doesn't plot because there are too many cells (>30k).
+https://github.com/satijalab/seurat/issues/2724
+We can use the subset function to select a subset of cells. (implemented up there)
 
 # save the Seurat object
 We can save the Seurat object to a file.
 ```{r save seurat object}
 saveRDS(bm, "data/seurat_obj/Oejten_seurat_QC.rds")
 ```
+
+# load the Seurat object
+We can load the Seurat object from a file.
+```{r load seurat object}
+bm <- readRDS("data/seurat_obj/Oejten_seurat_QC.rds")
+# marker genes csv
+bm.markers <- read.csv("results/tables/Oejten_top20markers.csv")
+```
+
+
