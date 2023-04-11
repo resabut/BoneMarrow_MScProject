@@ -215,7 +215,7 @@ How many dimensions do we need to capture most of the variance?
 
 ## Jackstraw plot
 We can use the jackstraw plot to estimate the number of dimensions needed to capture most of the variance.
-```{r jackstraw plot, eval = TRUE}
+```{r jackstraw plot, eval = FALSE}
 # run jackstraw
 bm <- JackStraw(bm, num.replicate = 100, dims = 50)
 bm <- ScoreJackStraw(bm, dims = 1:50)
@@ -281,4 +281,67 @@ umap_plot
 ggsave("results/figures/Oejten_umap.png",
        plot = umap_plot, dpi = 300,
        width = 10, height = 10)
+```
+
+
+
+
+# Marker genes
+
+## Find marker genes for each cluster
+
+We can use the FindAllMarkers function to find marker genes for each cluster.
+```{r find marker genes}
+bm <- FindAllMarkers(bm,
+                     only.pos = TRUE,
+                     min.pct = 0.25,
+                     logfc.threshold = 0.25
+                     )
+bm.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 20, order_by = avg_logFC) -> top20markers
+top20markers
+# save to file
+write.csv(top20markers, "results/tables/Oejten_top20markers.csv")
+```
+
+## Visualise marker genes
+We can plot some of the markers genes to see if they are indeed markers.
+
+The reference paper lists these 4 markers as examples.
+- CD3D
+- HBD
+- CD79A
+- NKG7
+
+```{r plot marker genes}
+# violin plots
+bm %>%
+  VlnPlot(feature = c("CD3D", "HBD", "CD79A", "NKG7"),
+          group.by = "cluster") -> marker_genes_vplot
+marker_genes_vplot
+# on umap
+bm %>%
+  FeaturePlot(feature = c("CD3D", "HBD", "CD79A", "NKG7"),
+              cols = c("black", "red"),
+              pt.size = 0.5) -> marker_genes_fplot
+marker_genes_fplot
+# save plots to file
+ggsave("results/figures/Oejten_marker_genes_violin.png",
+       plot = marker_genes_vplot, dpi = 300,
+       width = 10, height = 10)
+ggsave("results/figures/Oejten_marker_genes_umap.png",
+         plot = marker_genes_fplot, dpi = 300,
+         width = 10, height = 10)
+```
+
+
+
+
+
+
+# save the Seurat object
+We can save the Seurat object to a file.
+```{r save seurat object}
+saveRDS(bm, "data/seurat_obj/Oejten_seurat_QC.rds")
 ```
