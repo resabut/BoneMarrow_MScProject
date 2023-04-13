@@ -24,7 +24,7 @@ source("https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/R/sct
 
 # load data
 
-```{r load data, echo=FALSE}
+```{r load data}
 # load data
 bm <- readRDS("data/seurat_obj/Oejten_seurat_QC.rds")
 # load gene database, provided
@@ -124,3 +124,16 @@ lineage_freq_plot
 ggsave("results/figures/lineage_freq_plot.png", lineage_freq_plot, width = 10, height = 10)
 ```
 
+# plot lineages on umap
+```{r plot lineages on umap, echo=FALSE}
+bm %>%
+    DimPlot(reduction = "umap",
+            label = TRUE,
+            repel = TRUE,
+            group.by = 'lineage') -> umap_lineage_plot
+umap_lineage_plot
+# save plot to png
+ggsave("results/figures/umap_lineage_plot.png", umap_lineage_plot, width = 10, height = 10)
+```
+
+A small subset of erythroid clusters with the lymphoid cluster in the middle.
