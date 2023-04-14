@@ -81,7 +81,34 @@ all_data
 ```
 
 Note, check that the number of cells (samples) in the Seurat object is correct.
-In this case, it is over 90000 cells, which is correct acording to the paper.
+In this case, it is over 90000 cells, which is correct according to the paper.
+
+# add sex and age metadata
+```{r sex and age metadata}
+sex_age_df <- read.csv("data/metadata/sex_age_metadata.csv", header = TRUE, sep = ",")
+# get sample - cell id metadata
+# add short name for sample origin
+# e.g. "GSM339161_A" -> "A"
+all_data[["sample"]] <- strsplit(all_data$orig.ident, "_") %>% sapply(function(x) x[2])
+sample_df <- all_data@meta.data["sample"]
+# save rownames as a column
+rownames(sample_df) -> sample_df$cell_ids
+# left join
+sample_df %>%
+  left_join(sex_age_df, by = c("sample" = "sample")) -> sex_age_cell_df
+# add rownames
+rownames(sex_age_cell_df) <- sex_age_cell_df$cell_ids
+# delete cell_ids column
+sex_age_cell_df %>%
+        select(-cell_ids) -> sex_age_cell_df
+# add metadata to Seurat object
+all_data[["sex"]] <- sex_age_cell_df$sex
+all_data[["age"]] <- sex_age_cell_df$age
+# check if NA values are present in age and sex columns
+sum(is.na(all_data[['age']]))
+sum(is.na(all_data[['sex']]))
+```
+
 
 # Save Seurat object
 ```{r save seurat object}

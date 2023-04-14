@@ -12,6 +12,7 @@ suppressMessages(library(dplyr))
 suppressMessages(library(Seurat))
 suppressMessages(library(patchwork))
 suppressMessages(library(ggplot2))
+suppressMessages(library(clustree))
 # make folders, if they don't exist
 # results
 if (!dir.exists("results")) {
@@ -35,8 +36,7 @@ if (!dir.exists("results/tables")) {
 bm <- readRDS("data/seurat_obj/Oejten_scRNAseq.rds")
 bm
 ```
-```
-```
+
 
 # Preprocessing
 ## Add more QC metrics.
@@ -46,9 +46,7 @@ It is interesting to add metrics such as the number of mitochondrial or ribosoma
 bm <- PercentageFeatureSet(bm, pattern = "^MT-", col.name = "percent.mt")
 # calculate the number of ribosomal genes
 bm <- PercentageFeatureSet(bm, pattern = "^RPS|^RPL", col.name = "percent.ribo")
-# add short name for sample origin
-# e.g. "GSM339161_A" -> "A"
-bm[["sample"]] <- strsplit(bm$orig.ident, "_") %>% sapply(function(x) x[2])
+
 # see the new metrics
 head(bm@meta.data, 5)
 ```
@@ -151,14 +149,16 @@ More info
 # Scale data
 We scale the data to have a mean of 0 and variance of 1.
 ```{r scale data}
-# run for all the features takes too long
-# bm <- ScaleData(bm,
-#                 features = rownames(bm) # all features
-#                 )
-# scale only the variable features
+# run for all the features
+plan("multisession", workers = 4) # multithreading
+options(future.globals.maxSize = 2000 * 1024 ^ 2)
 bm <- ScaleData(bm,
-                features = VariableFeatures(bm) # only variable features
-                )
+                 features = rownames(bm) # all features
+                 )
+# scale only the variable features
+#bm <- ScaleData(bm,
+#                features = VariableFeatures(bm) # only variable features
+#                )
 ```
 
 Given that we have only scaled the variable features, these are the only ones that we can analyse further.
@@ -216,22 +216,6 @@ The expression in the first PC is very heterogeneous, with some cells having ver
 # Dimensionality of the data
 How many dimensions do we need to capture most of the variance?
 
-## Jackstraw plot
-We can use the jackstraw plot to estimate the number of dimensions needed to capture most of the variance.
-```{r jackstraw plot, eval = FALSE}
-# run jackstraw
-bm <- JackStraw(bm, num.replicate = 100, dims = 50)
-bm <- ScoreJackStraw(bm, dims = 1:50)
-# plot jackstraw
-JackStrawPlot(bm, dims = 1:50) -> jackstraw_plot
-jackstraw_plot
-# save plot to file
-ggsave("results/figures/Oejten_jackstraw.png",
-       plot = jackstraw_plot, dpi = 300,
-       width = 10, height = 10)
-```
-
-Significance is conserved even at 30 dimensions.
 
 ## Elbow plot
 We can also use the elbow plot to estimate the number of dimensions needed to capture most of the variance.
@@ -251,14 +235,33 @@ Elbow plot suggest that we need at least 20 dimensions to capture most of the va
 
 ## find neighbours and clusters
 We can use the FindNeighbors function to find the neighbours of each cell and the FindClusters function to cluster the cells.
-```{r find neighbours and clusters}
+```{r find neighbours}
 plan("multisession", workers = 40)
 bm <- FindNeighbors(bm,
                     dims = 1:20
                     )
-bm <- FindClusters(bm,
-                      resolution = 0.5
-                     )
+
+```
+```{r find clusters}
+plan("multisession", workers = 40)
+# find clusters at different resolutions
+# Select a range of resolutions
+resolution.range <- seq(from = 0, to = 1, by = 0.25)
+
+# Find clusters using a range of resolutions
+bm <- Seurat::FindClusters(object = bm,
+                           resolution = resolution.range
+                           )
+bm <- SetIdent(bm, value = "seurat_clusters")
+```
+
+
+## Plot clusters
+We can plot the clusters using the DimPlot function.
+```{r plot clusters}
+clustree(bm) -> clustree_plot
+clustree_plot
+
 # plot clusters
 bm %>%
   DimPlot(reduction = "pca") -> clusters_plot
@@ -270,6 +273,7 @@ ggsave("results/figures/Oejten_clusters.png",
 ```
 
 
+
 # Non-linear dimensional reduction
 ## UMAP
 We can use the UMAP algorithm to reduce the dimensionality of the data.
@@ -277,9 +281,15 @@ We can use the UMAP algorithm to reduce the dimensionality of the data.
 bm <- RunUMAP(bm,
               dims = 1:20
               )
-# plot umap
+```
+###  plot umap
+We can plot the UMAP.
+```{r umap plot}
+# plot umap with labels
 bm %>%
-  DimPlot(reduction = "umap") -> umap_plot
+  DimPlot(reduction = "umap",
+          label = TRUE,
+          group.by = "seurat_clusters" ) -> umap_plot
 umap_plot
 # save plot to file
 ggsave("results/figures/Oejten_umap.png",
@@ -287,7 +297,18 @@ ggsave("results/figures/Oejten_umap.png",
        width = 10, height = 10)
 ```
 
-
+### UMAP by sample
+We can also plot the UMAP by sample.
+```{r umap by sample}
+bm %>%
+  DimPlot(reduction = "umap",
+          group.by = "sample") -> umap_by_sample_plot
+umap_by_sample_plot
+# save plot to file
+ggsave("results/figures/Oejten_umap_by_sample.png",
+       plot = umap_by_sample_plot, dpi = 300,
+       width = 10, height = 10)
+```
 
 
 # Marker genes
@@ -297,7 +318,7 @@ ggsave("results/figures/Oejten_umap.png",
 We can use the FindAllMarkers function to find marker genes for each cluster.
 ```{r find marker genes}
 # parallelize
-plan("multisession", workers = 10)
+plan("multisession", workers = 40)
 # find markers
 bm.markers <- FindAllMarkers(bm,
                      only.pos = TRUE,
@@ -325,11 +346,12 @@ The reference paper lists these 4 markers as examples.
 ```{r plot marker genes}
 # violin plots
 bm %>%
-  VlnPlot(feature = c("CD3D", "HBD", "CD79A", "NKG7", "CD14") ) -> marker_genes_vplot
+  VlnPlot(feature = c("CD3D", "HBD", "CD79A", "NKG7", "CD14", "PROM1"),
+          group.by = "seurat_clusters") -> marker_genes_vplot
 marker_genes_vplot
 # on umap
 bm %>%
-  FeaturePlot(feature = c("CD3D", "HBD", "CD79A", "NKG7", "CD14"),
+  FeaturePlot(feature = c("CD3D", "HBD", "CD79A", "NKG7", "CD14", "PROM1"),
               cols = c("black", "red"),
               pt.size = 0.005) -> marker_genes_fplot
 marker_genes_fplot
@@ -353,7 +375,8 @@ bm.markers %>%
   group_by(cluster) %>%
   top_n(n = 5, wt = avg_log2FC) -> top5markers
 
-DoHeatmap(subset(bm, downsample = 100), features = top5markers$gene) -> marker_genes_heatmap
+DoHeatmap(subset(bm, downsample = 100), features = top5markers$gene,
+          group.by = "seurat_clusters") -> marker_genes_heatmap
 marker_genes_heatmap
 # save plot to file
 ggsave("results/figures/Oejten_marker_genes_heatmap.png",
@@ -378,7 +401,7 @@ We can use the subset function to select a subset of cells. (implemented up ther
 # save the Seurat object
 We can save the Seurat object to a file.
 ```{r save seurat object}
-saveRDS(bm, "data/seurat_obj/Oejten_seurat_QC.rds")
+saveRDS(bm, "data/seurat_obj/Oejten_seurat_QC.rds", compress = FALSE)
 ```
 
 # load the Seurat object
