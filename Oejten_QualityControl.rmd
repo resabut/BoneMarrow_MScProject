@@ -1,8 +1,10 @@
 ---
 title: "Quality Control of the Data for Oejten"
-output: html_notebook
+output: pdf_document
 ---
-
+```{r include = FALSE}
+knitr::opts_chunk$set(fig.height = 9, fig.width = 7, fig.crop = FALSE)
+```
 
 # Load data
 ## Load libraries and make folders
