@@ -82,7 +82,9 @@ bm %>%
             # change legend text size and put at the bottom
             theme(legend.text = element_text(size = 10),
                   legend.position = "bottom"
-            ) -> umap_celltype_plot
+            ) +
+            # change title
+            ggtitle("sc-type") -> umap_celltype_plot
 umap_celltype_plot
 # save plot to png
 ggsave("results/figures/umap_celltype_plot.png", umap_celltype_plot, width = 10, height = 10)
@@ -208,3 +210,29 @@ sex_umap
 ```
 
 
+# save seurat object
+```{r save seurat object, echo=FALSE}
+# save seurat object
+saveRDS(bm, file = "data/seurat_obj/Oejten_annotated.rds", compress = FALSE)
+print("seurat object saved")
+# print time
+print(Sys.time())
+```
+
+# load seurat object
+```{r load seurat object, echo=FALSE}
+# load seurat object
+bm <- readRDS("data/seurat_obj/Oejten_annotated.rds")
+print("seurat object loaded")
+# print time
+print(Sys.time())
+```
+
+
+# plot cell type frequency by sample grouped by sex
+```{r}
+bm %>%
+  dittoBarPlot(var = "sctypeclassif", group.by = "sample", split.by = "sex" ) -> sexcell_freq_plot
+
+sexcell_freq_plot
+```
