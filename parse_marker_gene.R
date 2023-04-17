@@ -11,10 +11,19 @@ library(openxlsx)
 args <- commandArgs(trailingOnly = TRUE)
 # first argument is the input file pathway
 input_file <- args[1]
+# second argument if take only the markers for only one cell type
+# if not specified, all cell types will be included
+cell_type <- args[2] # this is needed because there are some B cell or T cell type of lists
 # Load data
 data <- read.table(input_file, header = TRUE, sep = "\t")
 
 # Parse data
+# split shared markers into two rows
+# if the cellName column contains string "or" it is shared
+if (length(grep(" or ", data$Celltype)) > 0) {
+  # split the rows that contain "or" into two rows
+  data <- data %>% separate_rows(Celltype, sep = " or ")
+}
 # group by 3rd column and list all 4th column values
 sc_type_format <- data %>% group_by(Celltype) %>% summarise("MarkerGene" = paste(MarkerGene, collapse = ","))
 # add dataset column and empty negative markers column
@@ -24,6 +33,11 @@ print("here")
 sc_type_format <- cbind(sc_type_format, data.frame("NegativeMarkerGene" = "" ))
 # rename columns according to sc-type format
 colnames(sc_type_format) <- c("tissueType", "cellName", "geneSymbolmore1", "geneSymbolmore2")
+
+# remove duplicates
+sc_type_format <- sc_type_format[!duplicated(sc_type_format),]
+
+
 
 # save output
 # make new name by removing extension and adding -sc-type to the end of the input file name
