@@ -236,3 +236,185 @@ bm %>%
 
 sexcell_freq_plot
 ```
+
+
+
+# Annotation with sc-type and Conde et al from Immcluster
+
+
+## load seurat object
+```{r load seurat object, echo=FALSE}
+# load seurat object
+bm <- readRDS("data/seurat_obj/Oejten_annotated.rds")
+print("seurat object loaded")
+# print time
+print(Sys.time())
+```
+## load marker gene
+```{r load marker gene, echo=FALSE}
+# read xlsx
+gs_list <- gene_sets_prepare("data/marker_gene_lists/normal_BMA_markerInfor-sc-type.xlsx", "normal_BMA")
+#gs_list <- read.xlsx("data/marker_gene_lists/normal_BMA_markerInfor-sc-type.xlsx",
+#                     sheet = 1, colNames = TRUE)
+
+```
+## run sc-type
+
+```{r run sc-type, echo=FALSE}
+# run sc-type
+es.max <- sctype_score(scRNAseqData = bm[["RNA"]]@scale.data,
+                       scaled = TRUE,
+                       gs = gs_list$gs_positive,
+                       gs2 = gs_list$gs_negative)
+```
+
+
+## merge by cluster
+
+```{r merge by cluster, echo=FALSE}
+
+cL_resutls <- do.call("rbind", lapply(unique(bm@meta.data$seurat_clusters), function(cl){
+    es.max.cl <- sort(rowSums(es.max[ ,rownames(bm@meta.data[bm@meta.data$seurat_clusters==cl, ])]), decreasing = !0)
+    head(data.frame(cluster = cl, type = names(es.max.cl), scores = es.max.cl, ncells = sum(bm@meta.data$seurat_clusters==cl)), 10)
+}))
+# save results to csv
+write.csv(cL_resutls, "results/tables/cL_resutls_conde.csv")
+# get top score for each cluster
+sctype_scores <- cL_resutls %>% group_by(cluster) %>% top_n(n = 1, wt = scores)
+
+# set low-confident (low ScType score) clusters to "unknown"
+sctype_scores$type[as.numeric(as.character(sctype_scores$scores)) < sctype_scores$ncells/4] <- "Unknown"
+print(sctype_scores[,1:4])
+# save results to csv and xlsx
+write.csv(sctype_scores, "results/tables/sctype_scores_conde.csv")
+write.xlsx(sctype_scores, "results/tables/sctype_scores_conde.xlsx")
+```
+
+
+## plot on umap
+
+```{r plot on umap, echo=FALSE}
+bm@meta.data$sctypeconde <- ""
+for(j in unique(sctype_scores$cluster)){
+  cl_type <- sctype_scores[sctype_scores$cluster==j,]
+  bm@meta.data$sctypeconde[bm@meta.data$seurat_clusters == j] <- as.character(cl_type$type[1])
+}
+
+bm %>%
+    DimPlot(reduction = "umap",
+            label = TRUE,
+            repel = TRUE,
+            group.by = 'sctypeconde') +
+            # change legend text size and put at the bottom
+            theme(legend.text = element_text(size = 10),
+                  legend.position = "bottom"
+            ) +
+            # change title
+            ggtitle("sc-type conde") -> umap_celltypeconde_plot
+umap_celltypeconde_plot
+# save plot to png
+ggsave("results/figures/umap_celltypeconde_plot.png", umap_celltypeconde_plot, width = 10, height = 10)
+```
+
+
+
+
+# Annotation with sc-type and Qin
+
+
+## load seurat object
+```{r load seurat object, echo=FALSE}
+# load seurat object
+bm <- readRDS("data/seurat_obj/Oejten_annotated.rds")
+print("seurat object loaded")
+# print time
+print(Sys.time())
+```
+## load marker gene
+```{r load marker gene, echo=FALSE}
+# read xlsx
+gs_list <- gene_sets_prepare("data/marker_gene_lists/Qin_markers.xlsx", "Bone-Marrow")
+#gs_list <- read.xlsx("data/marker_gene_lists/normal_BMA_markerInfor-sc-type.xlsx",
+#                     sheet = 1, colNames = TRUE)
+
+```
+## run sc-type
+
+```{r run sc-type, echo=FALSE}
+# run sc-type
+es.max <- sctype_score(scRNAseqData = bm[["RNA"]]@scale.data,
+                       scaled = TRUE,
+                       gs = gs_list$gs_positive,
+                       gs2 = gs_list$gs_negative)
+```
+
+
+## merge by cluster
+
+```{r merge by cluster, echo=FALSE}
+
+cL_resutls <- do.call("rbind", lapply(unique(bm@meta.data$seurat_clusters), function(cl){
+    es.max.cl <- sort(rowSums(es.max[ ,rownames(bm@meta.data[bm@meta.data$seurat_clusters==cl, ])]), decreasing = !0)
+    head(data.frame(cluster = cl, type = names(es.max.cl), scores = es.max.cl, ncells = sum(bm@meta.data$seurat_clusters==cl)), 10)
+}))
+# save results to csv
+write.csv(cL_resutls, "results/tables/cL_resutls_qin.csv")
+# get top score for each cluster
+sctype_scores <- cL_resutls %>% group_by(cluster) %>% top_n(n = 1, wt = scores)
+
+# set low-confident (low ScType score) clusters to "unknown"
+sctype_scores$type[as.numeric(as.character(sctype_scores$scores)) < sctype_scores$ncells/4] <- "Unknown"
+print(sctype_scores[,1:4])
+# save results to csv and xlsx
+write.csv(sctype_scores, "results/tables/sctype_scores_qin.csv")
+write.xlsx(sctype_scores, "results/tables/sctype_scores_qin.xlsx")
+```
+
+
+## plot on umap
+
+```{r plot on umap, echo=FALSE}
+bm@meta.data$sctypeqin <- ""
+for(j in unique(sctype_scores$cluster)){
+  cl_type <- sctype_scores[sctype_scores$cluster==j,]
+  bm@meta.data$sctypeqin[bm@meta.data$seurat_clusters == j] <- as.character(cl_type$type[1])
+}
+
+bm %>%
+    DimPlot(reduction = "umap",
+            label = TRUE,
+            repel = TRUE,
+            group.by = 'sctypeqin') +
+            # change legend text size and put at the bottom
+            theme(legend.text = element_text(size = 10),
+                  legend.position = "bottom"
+            ) +
+            # change title
+            ggtitle("sc-type qin") -> umap_celltypeqin_plot
+umap_celltypeqin_plot
+# save plot to png
+ggsave("results/figures/umap_celltypeqin_plot.png", umap_celltypeqin_plot, width = 10, height = 10)
+```
+
+## calculate frrequencies
+
+```{r calculate frrequencies, echo=FALSE}
+# calculate frrequencies
+sctype_freq <- bm@meta.data %>% group_by(sctypeqin) %>% summarise(n = n()) %>% arrange(desc(n))
+sctype_freq$freq <- sctype_freq$n/sum(sctype_freq$n)
+sctype_freq
+# make a pieplot
+sctype_freq %>%
+    ggplot(aes(x = "", y = freq, fill = sctypeqin)) +
+    geom_bar(width = 1, stat = "identity") +
+    coord_polar("y", start = 0) +
+    theme_void() +
+    theme(legend.position = "bottom") +
+  # add labels with names
+    geom_text(aes(label = sctypeqin), position = position_stack(vjust = 0.5)) +
+    ggtitle("sc-type qin") -> sctype_freq_plot
+sctype_freq_plot
+# save plot to png
+ggsave("results/figures/sctypeqin_freq_plot.png", sctype_freq_plot, width = 10, height = 10)
+```
+
