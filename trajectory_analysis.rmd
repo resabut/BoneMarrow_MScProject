@@ -1,0 +1,108 @@
+---
+title: "Cell trajectory analysis using Monocle 3"
+output: pdf_document
+---
+
+This follows
+https://ucdavis-bioinformatics-training.github.io/2021-August-Advanced-Topics-in-Single-Cell-RNA-Seq-Trajectory-and-Velocity/data_analysis/scrna_analysis_prepare1_fixed
+https://ucdavis-bioinformatics-training.github.io/2021-August-Advanced-Topics-in-Single-Cell-RNA-Seq-Trajectory-and-Velocity/data_analysis/monocle_fixed
+https://cole-trapnell-lab.github.io/monocle3/docs/trajectories/
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.height = 9, fig.width = 7, fig.crop = FALSE)
+```
+
+# load packages
+
+```{r load libraries}
+library(monocle3)
+library(Seurat)
+library(SeuratWrappers)
+library(patchwork)
+
+set.seed(1234)
+```
+
+# load data
+
+```{r load data}
+# load data
+data <- readRDS("data/seurat_obj/Oejten_annotated.rds")
+```
+# Seurat to monocle3
+
+
+```{r Seurat to monocle3}
+# convert Seurat object to monocle3 object
+monocle3_obj <- as.cell_data_set(data)
+```
+
+# Cluster analysis
+
+```{r cluster analysis}
+# cluster analysis
+monocle3_obj <- cluster_cells(monocle3_obj, resolution = 1e-5)
+```
+1e-5 looks pretty good
+## plot the clusters
+```{r plot clusters}
+p1 <- plot_cells(monocle3_obj, color_cells_by = "cluster", show_trajectory_graph = FALSE)
+p1
+# plot partition
+plot_cells(monocle3_obj, color_cells_by = "partition", show_trajectory_graph = FALSE) -> p1.2
+p1.2
+
+```
+
+# Pseudotime analysis
+
+```{r pseudotime analysis}
+# pseudotime analysis
+monocle3_obj <- learn_graph(monocle3_obj, use_partition = TRUE)
+```
+## plot the pseudotime
+```{r plot trajectory}
+plot_cells(monocle3_obj,
+           color_cells_by = "cluster",
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE) -> p2
+p2
+
+```
+
+## plot the pseudotime
+```{r plot pseudotime}
+# root cell is cluster 4 where we know the stem cells are
+monocle3_obj <- order_cells(monocle3_obj, root_cell = colnames(monocle3_obj[,clusters(monocle3_obj) == 4]))
+plot_cells(monocle3_obj,
+           color_cells_by = "pseudotime",
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE) -> p3
+p3
+plot_cells(monocle3_obj,
+           color_cells_by = "sctypeqin",
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE) -> p3.2
+p3.2
+```
+
+# subset trajectory
+
+```{r subset trajectory}
+# subset trajectory
+cds_sub <- choose_graph_segments(monocle3_obj)
+```
+
+
+# Cell trajectory analysis
+
+```{r cell trajectory analysis}
+# cell trajectory analysis
+monocle3_obj <- reduce_dimension(monocle3_obj, max_components = 2)
+monocle3_obj <- order_cells(monocle3_obj, root_cell = colnames(monocle3_obj[,clusters(monocle3_obj) == 4]))
+monocle3_obj <- compute_cell_trajectory(monocle3_obj)
+```
