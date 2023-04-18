@@ -215,16 +215,10 @@ The editor doesn´t work in PyCharm, but it can be done in the terminal, with th
 pr_deg_ids <- read.table("results/tables/pr_deg_ids.txt", sep = "\t", header = FALSE, stringsAsFactors = FALSE)
 pr_test <- read.table("results/tables/pr_test.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE, row.names = 1)
 # sort by morans_I (morans_index)
-pr_test <- pr_test[order(-pr_test$morans_I, pr_test$p_value),]
-pr_deg_ids <- row.names(subset(pr_test, q_value < 0.05))
+pr_deg_ids <- row.names(subset(pr_test[order(pr_test$morans_I),], q_value < 0.05))
 # print the first 10
-pr_deg_ids[1:12]
+pr_deg_ids[1:12] -> markers_list
 ```
- [1] "HBB"      "HBA2"     "HBA1"
- [4] "IGLV3-27" "AHSP"     "PRDX2"
- [7] "HBD"      "LYZ"      "RPS27"
-[10] "BLVRB"    "ALAS2"    "MZB1"
-
 
 ## plot some interesting genes
 
@@ -234,11 +228,39 @@ pr_deg_ids[1:12]
 rowData(monocle3_obj)$gene_name <- rownames(monocle3_obj)
 rowData(monocle3_obj)$gene_short_name <- rowData(monocle3_obj)$gene_name
 # plot some interesting genes
-plot_cells(monocle3_obj,
-            genes=c("HBB", "HBA2", "HBA1", "IGLV3-27", "AHSP", "PRDX2", "HBD", "LYZ", "RPS27", "BLVRB", "ALAS2", "MZB1"),
+# show only partition 2
+integrated.sub_2 <- subset(as.Seurat(monocle3_obj, assay = NULL), monocle3_partitions == 2)
+partition_2_cds <- as.cell_data_set(integrated.sub_2)
+# fix gene names again
+rowData(partition_2_cds)$gene_name <- rownames(partition_2_cds)
+rowData(partition_2_cds)$gene_short_name <- rowData(partition_2_cds)$gene_name
+
+plot_cells(partition_2_cds,
+           genes= markers_list,
            show_trajectory_graph=FALSE,
            labels_per_group = FALSE,
-           label_leaves=FALSE
+           label_leaves=FALSE,
+           min_expr = 1e-10
             ) -> p5
 p5
+# plot violin plot expression of the genes
+plot_genes_by_group(monocle3_obj,
+                    markers = markers_list,
+                    axis_order = "marker_group",
+                    group_cells_by="sctypeqin",
+                    ordering_type="maximal_on_diag",
+                    max.size=10) -> p6
+p6
+```
+
+## plot marker genes in dot plot
+```{r plot marker genes in dot plot}
+markers_list <- c("HBB", "HBA2", "HBA1", "IGLV3-27", "AHSP", "PRDX2", "HBD", "LYZ", "BLVRB", "ALAS2", "MZB1", "CD3D", "CD14")
+plot_genes_by_group(monocle3_obj,
+                    markers = markers_list,
+                    axis_order = "marker_group",
+                    group_cells_by="sctypeqin",
+                    ordering_type="maximal_on_diag",
+                    max.size=10) -> p6
+p6
 ```
