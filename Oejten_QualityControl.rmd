@@ -205,7 +205,12 @@ To me, it looks like the first PC is separating a very small set of the cells fr
 ### Plot a heatmap of the PCs
 We can also plot a heatmap of the PCs. It helps to identify the sources of heterogeneity in the dataset.
 ```{r pca heatmap}
-DimHeatmap(bm, dims = 1:6, cells = 500, balanced = TRUE) -> pca_heatmap
+DimHeatmap(bm,
+           dims = 1:6,
+           cells = 500,
+           balanced = TRUE,
+           fast = FALSE # function returns a ggplot object, otherwise is NULL
+) -> pca_heatmap
 pca_heatmap
 # save plot to file
 ggsave("results/figures/Oejten_PCA_heatmap.png",
