@@ -1,0 +1,244 @@
+---
+title: "Cell trajectory analysis using Monocle 3"
+output: pdf_document
+---
+
+This follows
+https://ucdavis-bioinformatics-training.github.io/2021-August-Advanced-Topics-in-Single-Cell-RNA-Seq-Trajectory-and-Velocity/data_analysis/scrna_analysis_prepare1_fixed
+https://ucdavis-bioinformatics-training.github.io/2021-August-Advanced-Topics-in-Single-Cell-RNA-Seq-Trajectory-and-Velocity/data_analysis/monocle_fixed
+https://cole-trapnell-lab.github.io/monocle3/docs/trajectories/
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.height = 9, fig.width = 7, fig.crop = FALSE)
+```
+
+# Loading
+## load packages
+
+```{r load libraries}
+rm(list=ls())
+library(monocle3)
+library(Seurat)
+library(SeuratWrappers)
+library(patchwork)
+
+set.seed(1234)
+```
+## Functions
+
+```{r functions}
+# From the tutorial cole-trapnell-lab.github.io/monocle3/docs/trajectories/
+# a helper function to identify the root principal points:
+get_earliest_principal_node <- function(monocle3_object, time_bin="130-170"){
+  #
+  cell_ids <- which(colData(monocle3_object)[, "embryo.time.bin"] == time_bin)
+
+  closest_vertex <-
+  cds@principal_graph_aux[["UMAP"]]$pr_graph_cell_proj_closest_vertex
+  closest_vertex <- as.matrix(closest_vertex[colnames(monocle3_object), ])
+  root_pr_nodes <-
+  igraph::V(principal_graph(monocle3_object)[["UMAP"]])$name[as.numeric(names
+  (which.max(table(closest_vertex[cell_ids,]))))]
+
+  root_pr_nodes
+}
+# source from github v1.0.0, but modified rbind
+source("data/functions/graph_test.R")
+
+```
+## load data
+
+```{r load data}
+# load data
+data <- readRDS("data/seurat_obj/Oejten_annotated.rds")
+```
+
+# Seurat to monocle3
+
+```{r Seurat to monocle3}
+# convert Seurat object to monocle3 object
+monocle3_obj <- as.cell_data_set(data)
+```
+
+# Cluster analysis
+
+```{r cluster analysis}
+# cluster analysis
+monocle3_obj <- cluster_cells(monocle3_obj, resolution = 1e-5)
+print("cluster_cells done")
+
+```
+
+1e-5 looks pretty good
+## plot the clusters
+```{r plot clusters}
+p1 <- plot_cells(monocle3_obj, color_cells_by = "cluster", show_trajectory_graph = FALSE)
+p1
+# plot partition
+plot_cells(monocle3_obj, color_cells_by = "partition", show_trajectory_graph = FALSE) -> p1.2
+p1.2
+
+```
+
+# Pseudotime analysis
+
+```{r pseudotime analysis}
+# pseudotime analysis
+monocle3_obj <- learn_graph(monocle3_obj, use_partition = TRUE)
+```
+
+## plot the trajectory
+```{r plot trajectory}
+plot_cells(monocle3_obj,
+           color_cells_by = "cluster",
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE) -> p2
+p2
+
+```
+
+## plot the pseudotime
+```{r plot pseudotime}
+# root cell is cluster 4 where we know the stem cells are
+monocle3_obj <- order_cells(monocle3_obj, root_cell = colnames(monocle3_obj[,clusters(monocle3_obj) == 4]))
+plot_cells(monocle3_obj,
+           color_cells_by = "pseudotime",
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE) -> p3
+p3
+plot_cells(monocle3_obj,
+           color_cells_by = "sctypeqin",
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE) -> p3.2
+p3.2
+```
+# pick the root
+
+## find the earliest node and order the cells from it
+```{r pick the root}
+# pick the root
+
+# order cells from the root
+monocle3_obj <- order_cells(monocle3_obj, root_pr_nodes=get_earliest_principal_node(monocle3_obj))
+
+```
+ ## plot the pseudotime
+```{r plot pseudotime}
+plot_cells(monocle3_obj,
+           color_cells_by = "pseudotime",
+           label_groups_by_cluster=FALSE,
+           label_leaves=TRUE,
+           label_branch_points=FALSE,
+           graph_label_size = 4) -> p3.3
+p3.3
+```
+
+
+
+# subset trajectory
+
+```{r subset trajectory}
+# subset trajectory
+# the interactive selector doesn't work in pycharm (at least), so we need to do it manually
+# monocle3_obj <- choose_graph_segments(monocle3_obj)
+
+# take trajectory 9
+trajectory_9 <- subset(monocle3_obj, cells = which(colData(monocle3_obj)$trajectory == 9))
+# plot the pseudotime
+plot_cells(trajectory_9,
+           color_cells_by = "pseudotime",
+           group_cells_by = "sex",
+           label_groups_by_cluster=FALSE,
+           label_leaves=TRUE,
+           label_branch_points=FALSE,
+           graph_label_size = 4
+           ) -> p3.4
+p3.4
+```
+
+
+# 3d trajectory
+
+```{r 3d trajectory}
+# 3d trajectory
+cds_3d <- reduce_dimension(monocle3_obj, max_components = 3)
+cds_3d <- cluster_cells(cds_3d)
+cds_3d <- learn_graph(cds_3d)
+cds_3d <- order_cells(cds_3d, root_pr_nodes=get_earliest_principal_node(cds))
+```
+## plot the 3d trajectory
+```{r plot 3d trajectory}
+cds_3d_plot_obj <- plot_cells_3d(cds_3d, color_cells_by="partition")
+cds_3d_plot_partition
+# color by sctypeqin
+cds_3d_plot_qin <- plot_cells_3d(cds_3d, color_cells_by="sctypeqin")
+cds_3d_plot_qin
+```
+
+# save the object
+```{r save the object}
+# if folder doesn't exist, create it
+dir.create("data/monocle3_obj", showWarnings = FALSE)
+# save the object
+saveRDS(monocle3_obj, "data/monocle3_obj/Oejten_annotated.rds", compress = FALSE)
+```
+# load the object
+```{r load the object}
+# load the object
+monocle3_obj <- readRDS("data/monocle3_obj/Oejten_annotated.rds")
+```
+# Differential expression
+We can identify the genes that are differentially expressed between two groups of cells. We can also identify the genes that are differentially expressed between two groups of cells along the trajectory. We can also identify the genes that are differentially expressed between two groups of cells along the trajectory, but only in the cells that are in the same cluster as the root cell.
+
+```{r differential expression eval = FALSE}
+pr_test <- graph_test(monocle3_obj, neighbor_graph = "principal_graph", cores = 4)
+pr_deg_ids <- row.names(subset(pr_test, q_value < 0.05))
+pr_deg_ids
+# save both to file
+write.table(pr_deg_ids, file = "results/tables/pr_deg_ids.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+write.table(pr_test, file = "results/tables/pr_test.txt", sep = "\t", quote = FALSE, row.names = TRUE)
+
+```
+if rbind error, do this
+https://groups.google.com/g/monocle-3-users/c/tBjYuAxwyEo?pli=1
+The problem is that for this version of Monocle3, 1.0.0, the graph_test function uses Matrix::rBind() instead of rbind().
+It has to be manually modified via trace().
+The editor doesn´t work in PyCharm, but it can be done in the terminal, with the condition that this chunk has to be also run there.
+
+### load the gene tables
+```{r load the gene tables}
+# load the gene tables
+pr_deg_ids <- read.table("results/tables/pr_deg_ids.txt", sep = "\t", header = FALSE, stringsAsFactors = FALSE)
+pr_test <- read.table("results/tables/pr_test.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE, row.names = 1)
+# sort by morans_I (morans_index)
+pr_test <- pr_test[order(-pr_test$morans_I, pr_test$p_value),]
+pr_deg_ids <- row.names(subset(pr_test, q_value < 0.05))
+# print the first 10
+pr_deg_ids[1:12]
+```
+ [1] "HBB"      "HBA2"     "HBA1"
+ [4] "IGLV3-27" "AHSP"     "PRDX2"
+ [7] "HBD"      "LYZ"      "RPS27"
+[10] "BLVRB"    "ALAS2"    "MZB1"
+
+
+## plot some interesting genes
+
+
+```{r plot some interesting genes}
+# fix gene names
+rowData(monocle3_obj)$gene_name <- rownames(monocle3_obj)
+rowData(monocle3_obj)$gene_short_name <- rowData(monocle3_obj)$gene_name
+# plot some interesting genes
+plot_cells(monocle3_obj,
+            genes=c("HBB", "HBA2", "HBA1", "IGLV3-27", "AHSP", "PRDX2", "HBD", "LYZ", "RPS27", "BLVRB", "ALAS2", "MZB1"),
+           show_trajectory_graph=FALSE,
+           labels_per_group = FALSE,
+           label_leaves=FALSE
+            ) -> p5
+p5
+```

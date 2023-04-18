@@ -218,6 +218,7 @@ ggsave("results/figures/Oejten_PCA_heatmap.png",
        width = 10, height = 10)
 ```
 
+
 The expression in the first PC is very heterogeneous, with some cells having very high expression and others having very low expression when it comes to the negative direction of the PC.
 
 # Dimensionality of the data
