@@ -29,7 +29,8 @@ BiocManager::install(c("Biobase", "SingleCellExperiment", "batchelor", "BiocGene
 
 remotes::install_github('cole-trapnell-lab/leidenbase')
 remotes::install_github('cole-trapnell-lab/monocle3')
-
+# this package is gone from CRAN in 4.2.3, it is needed to install monocle3
+remotes::install_version('speedglm', '0.3-4', repos = 'https://packagemanager.rstudio.com/cran/2023-03-31')
 ```
 
 
