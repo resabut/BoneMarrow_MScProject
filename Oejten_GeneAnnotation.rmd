@@ -545,3 +545,63 @@ DimPlot(y_bm, reduction = "umap", group.by = "RNA_snn_res.0.5", label = TRUE, re
 
 ```
 
+
+# plot cell frequency
+```{r}
+
+bm@meta.data %>%
+  group_by(sample, sex) %>%
+  count(sctypeqin) %>%
+  mutate(pct = n / sum(n)) %>%
+  ggplot(aes(x = sex, y = pct, color = sctypeqin)) + #+ geom_bar(stat='identity') + theme(axis.text.x = element_text(angle=45, hjust=1))
+  geom_point() +
+  geom_boxplot() +
+  facet_wrap(~sctypeqin, scales = "free") +
+  labs(title = "Distribution per cell type")
+# make same violin plot
+bm@meta.data %>%
+  group_by(sample, sex, age) %>%
+  count(sctypeqin) %>%
+  mutate(pct = n / sum(n)) %>%
+  ggplot(aes(x = sex, y = pct, color = age)) +
+  geom_violin() +
+  geom_point() +
+  geom_text(aes(label = age), size = 3, vjust = -0.5) +
+  facet_wrap(~sctypeqin, scales = "free") +
+  labs(title = "Distribution per cell type")
+# same code changing sctypeqin for sctypeclassif
+bm@meta.data %>%
+  group_by(sample, sex) %>%
+  count(sctypeclassif) %>%
+  mutate(pct = n / sum(n)) %>%
+  ggplot(aes(x = sex, y = pct, color = sctypeclassif)) +
+  geom_point() +
+  facet_wrap(~sctypeclassif, scales = "free") +
+  labs(title = "Distribution per cell type")
+# only under 45
+bm@meta.data %>%
+  filter(age <= 45) %>%
+  group_by(sample, sex, age) %>%
+  count(sctypeqin) %>%
+  mutate(pct = n / sum(n)) %>%
+  ggplot(aes(x = sex, y = pct, color = age)) +
+  geom_violin() +
+  geom_point() +
+  # add text with age to each point
+  geom_text(aes(label = age), size = 3, vjust = -0.5) +
+  facet_wrap(~sctypeqin, scales = "free") +
+  labs(title = "Distribution per cell type")
+# above 45
+bm@meta.data %>%
+  filter(age > 45) %>%
+  group_by(sample, sex, age) %>%
+  count(sctypeqin) %>%
+  mutate(pct = n / sum(n)) %>%
+  ggplot(aes(x = sex, y = pct, color = age)) +
+  geom_violin() +
+  geom_point() +
+  # add text with age to each point
+  geom_text(aes(label = age), size = 3, vjust = -0.5) +
+  facet_wrap(~sctypeqin, scales = "free") +
+  labs(title = "Distribution per cell type")
+```
