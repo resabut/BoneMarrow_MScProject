@@ -172,7 +172,7 @@ cds_3d <- order_cells(cds_3d, root_pr_nodes=get_earliest_principal_node(cds))
 ```
 ## plot the 3d trajectory
 ```{r plot 3d trajectory}
-cds_3d_plot_obj <- plot_cells_3d(cds_3d, color_cells_by="partition")
+cds_3d_plot_partition <- plot_cells_3d(cds_3d, color_cells_by="partition")
 cds_3d_plot_partition
 # color by sctypeqin
 cds_3d_plot_qin <- plot_cells_3d(cds_3d, color_cells_by="sctypeqin")
@@ -240,17 +240,18 @@ plot_cells(partition_2_cds,
            show_trajectory_graph=FALSE,
            labels_per_group = FALSE,
            label_leaves=FALSE,
-           min_expr = 1e-10
+           min_expr = 1e-10,
+           scale_to_range = TRUE
             ) -> p5
 p5
-# plot violin plot expression of the genes
+# plot dot plot expression of the genes
 plot_genes_by_group(monocle3_obj,
                     markers = markers_list,
                     axis_order = "marker_group",
                     group_cells_by="sctypeqin",
                     ordering_type="maximal_on_diag",
-                    max.size=10) -> p6
-p6
+                    max.size=10) -> p5.2
+p5.2
 ```
 
 ## plot marker genes in dot plot
@@ -264,3 +265,41 @@ plot_genes_by_group(monocle3_obj,
                     max.size=10) -> p6
 p6
 ```
+
+## plot expression in pseudotime
+```{r plot expression in pseudotime}
+#plot_genes_in_pseudotime(monocle3_obj[markers_list,], # only the markers
+#                         panel_order = markers_list,
+#                         color_cells_by = "sctypeqin",
+#                         min_expr = 0.1
+#) -> p7
+p7
+plot_genes_in_pseudotime(monocle3_obj["HBB",], # only the markers
+                         panel_order = "HBB",
+                         color_cells_by = "sctypeqin",
+                         min_expr = 0.1
+) -> p7.2
+p7.2
+plot_genes_in_pseudotime(monocle3_obj["LYZ",], # only the markers
+                         panel_order = "LYZ",
+                         color_cells_by = "sctypeqin",
+                         min_expr = 0.1
+) -> p7.3
+p7.3
+# save to pdf
+ggsave("results/figures/monocle3_pseudotime.pdf", p7, width = 10, height = 10)
+```
+
+### see expression
+```{r see expression}
+exprs(monocle3_obj)[markers_list,] -> exprs_markers
+rowMeans(exprs_markers) -> exprs_markers_mean
+exprs_markers_mean
+plot_genes_violin(monocle3_obj["HBB",], group_cells_by = "sctypeqin", normalize = FALSE, log_scale = FALSE ) -> p8
+p8
+plot_genes_violin(monocle3_obj["LYZ",], group_cells_by = "sctypeqin", normalize = FALSE, log_scale = FALSE ) -> p8.2
+p8.2
+```
+
+
+
