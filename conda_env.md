@@ -7,6 +7,7 @@ conda create -n MScProject39
 conda activate MScProject39
 conda install -c r r=4.2 r-essentials
 conda install -c conda-forge r-monocle3
+conda install r-duckdb
 R # starts the R console
 ```
 
@@ -31,6 +32,10 @@ remotes::install_github('cole-trapnell-lab/leidenbase')
 remotes::install_github('cole-trapnell-lab/monocle3')
 # this package is gone from CRAN in 4.2.3, it is needed to install monocle3
 remotes::install_version('speedglm', '0.3-4', repos = 'https://packagemanager.rstudio.com/cran/2023-03-31')
+
+# For curatedatlastqueryr
+
+remotes::install_github("stemangiola/CuratedAtlasQueryR")
 ```
 
 
