@@ -46,7 +46,7 @@ es.max <- sctype_score(scRNAseqData = bm[["RNA"]]@scale.data,
 
 # merge by cluster
 
-```{r merge by cluster, echo=FALSE}
+```{r merge by cluster 2nd, echo=FALSE}
 
 cL_resutls <- do.call("rbind", lapply(unique(bm@meta.data$seurat_clusters), function(cl){
     es.max.cl <- sort(rowSums(es.max[ ,rownames(bm@meta.data[bm@meta.data$seurat_clusters==cl, ])]), decreasing = !0)
@@ -67,7 +67,7 @@ write.xlsx(sctype_scores, "results/tables/sctype_scores.xlsx")
 
 # plot on umap
 
-```{r plot on umap, echo=FALSE}
+```{r plot on umap 2nd , echo=FALSE}
 bm@meta.data$sctypeclassif <- ""
 for(j in unique(sctype_scores$cluster)){
   cl_type <- sctype_scores[sctype_scores$cluster==j,]
@@ -243,7 +243,7 @@ sexcell_freq_plot
 
 
 ## load seurat object
-```{r load seurat object, echo=FALSE}
+```{r load seurat object bis, echo=FALSE}
 # load seurat object
 bm <- readRDS("data/seurat_obj/Oejten_annotated.rds")
 print("seurat object loaded")
@@ -260,7 +260,7 @@ gs_list <- gene_sets_prepare("data/marker_gene_lists/normal_BMA_markerInfor-sc-t
 ```
 ## run sc-type
 
-```{r run sc-type, echo=FALSE}
+```{r run sc-type 2nd, echo=FALSE}
 # run sc-type
 es.max <- sctype_score(scRNAseqData = bm[["RNA"]]@scale.data,
                        scaled = TRUE,
@@ -271,7 +271,7 @@ es.max <- sctype_score(scRNAseqData = bm[["RNA"]]@scale.data,
 
 ## merge by cluster
 
-```{r merge by cluster, echo=FALSE}
+```{r merge by cluster bis, echo=FALSE}
 
 cL_resutls <- do.call("rbind", lapply(unique(bm@meta.data$seurat_clusters), function(cl){
     es.max.cl <- sort(rowSums(es.max[ ,rownames(bm@meta.data[bm@meta.data$seurat_clusters==cl, ])]), decreasing = !0)
@@ -323,7 +323,7 @@ ggsave("results/figures/umap_celltypeconde_plot.png", umap_celltypeconde_plot, w
 
 
 ## load seurat object
-```{r load seurat object, echo=FALSE}
+```{r load seurat object 3rd, echo=FALSE}
 # load seurat object
 bm <- readRDS("data/seurat_obj/Oejten_annotated.rds")
 print("seurat object loaded")
@@ -331,7 +331,7 @@ print("seurat object loaded")
 print(Sys.time())
 ```
 ## load marker gene
-```{r load marker gene, echo=FALSE}
+```{r load marker gene qin, echo=FALSE}
 # read xlsx
 gs_list <- gene_sets_prepare("data/marker_gene_lists/Qin_markers.xlsx", "Bone-Marrow")
 #gs_list <- read.xlsx("data/marker_gene_lists/normal_BMA_markerInfor-sc-type.xlsx",
@@ -340,7 +340,7 @@ gs_list <- gene_sets_prepare("data/marker_gene_lists/Qin_markers.xlsx", "Bone-Ma
 ```
 ## run sc-type
 
-```{r run sc-type, echo=FALSE}
+```{r run sc-type bis, echo=FALSE}
 # run sc-type
 es.max <- sctype_score(scRNAseqData = bm[["RNA"]]@scale.data,
                        scaled = TRUE,
@@ -373,7 +373,7 @@ write.xlsx(sctype_scores, "results/tables/sctype_scores_qin.xlsx")
 
 ## plot on umap
 
-```{r plot on umap, echo=FALSE}
+```{r plot on umap bis, echo=FALSE}
 bm@meta.data$sctypeqin <- ""
 for(j in unique(sctype_scores$cluster)){
   cl_type <- sctype_scores[sctype_scores$cluster==j,]
@@ -420,7 +420,7 @@ ggsave("results/figures/sctypeqin_freq_plot.png", sctype_freq_plot, width = 10, 
 
 # save seurat object
 This overwrites the seurat object with the new annotations.
-```{r save seurat object, echo=FALSE}
+```{r save seurat object bis, echo=FALSE}
 # save seurat object
 saveRDS(bm, file = "data/seurat_obj/Oejten_annotated.rds", compress = FALSE)
 print("seurat object saved")
@@ -515,7 +515,7 @@ bm %>%
  [7] "ZFY"       "ZFY-AS1"   "DDX3Y"     "UTY"       "TMSB4Y"    "NLGN4Y"
 [13] "LINC00278" "RPS4Y2"    "PCDH11Y"
 # make sure that the sex is correct
-```{r}
+```{r idk, eval = FALSE}
 y_genes <- c("USP9Y", "EIF1AY", "TTTY10", "TTTY14", "KDM5D", "RPS4Y1", "ZFY", "ZFY-AS1", "DDX3Y", "UTY", "TMSB4Y", "NLGN4Y", "LINC00278", "RPS4Y2", "PCDH11Y")
 y_bm <- subset(bm, features = y_genes)
 y_bm <- RunPCA(y_bm, features = y_genes)
