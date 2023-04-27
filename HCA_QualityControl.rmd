@@ -55,7 +55,12 @@ The data slot is empty for some reason, so we need import it from the counts slo
 ## explore metadata
 ```{r explore metadata}
 # explore metadata
-colnames(bm@meta.data)
+colnames(bm@meta.data) -> metadata_names
+metadata_names
+
+# see all projects
+bm@meta.data %>% distinct(project_id, platform, cell_sorting) -> projects
+projects
 
 # see individuals
 bm@meta.data %>%
@@ -65,7 +70,7 @@ indiv.metadata
 # plot ages in histogram
 indiv.metadata %>%
   ggplot(aes(x = age)) +
-  geom_histogram(bins = 5) +
+  geom_histogram(bins = 10) +
     # title
     labs(title = "Age distribution for all datasets",
          x = "Age (y)",
@@ -158,17 +163,12 @@ bm <- AddMetaData(bm, metadata = simplified_ct, col.name = "simplified_ct")
 # check
 ```
 
-I wrote this to add the info midway through the analysis, but it is better to add it at the beginning.
-```
-bm@meta.data %>%
-  filter(project_id == "HCA_HematopoieticImmuneCellAtlas") %>%
-  select("simplified_ct")-> simplified_ct_HCA
 
-data <- AddMetaData(data, metadata = simplified_ct_HCA, col.name = "simplified_ct")
-```
+
 
 # Subset
 ## subset for HCA
+
 ```{r subset for HCA}
 bm.HCA <- subset(bm, subset = project_id == "HCA_HematopoieticImmuneCellAtlas")
 # check subset
@@ -183,15 +183,65 @@ bm.GSE120221 <- subset(bm, subset = project_id == "GSE120221")
 bm.GSE120221@meta.data %>%
   distinct(project_id, subject_id, sample_id, gender, age)
 ```
+## subset for unsorted cells
 
+In this case I will subset for 3 datasets that have:
+- Over 5 individuals
+- Not sorted by cell markers
 
+These are the datasets:
+- HCA_HematopoieticImmuneCellAtlas
+- GSE120221
+- GSE185381
+```{r subset for unsorted cells}
+project_id_list <- c("HCA_HematopoieticImmuneCellAtlas", "GSE120221", "GSE185381")
+bm.unsorted <- subset(bm, subset = project_id %in% project_id_list)
+# check subset
+bm.unsorted@meta.data %>%
+distinct(project_id, subject_id, sample_id, gender, age)
+```
+### add sex (gender) metadata
+
+```{r sex and age metadata}
+sex_df <- read.csv("data/unsorted/GSE120221.csv", header = TRUE, sep = ",")
+# get sample - cell id metadata
+sample_df <- bm.unsorted@meta.data %>%
+  select(sample_id, gender) -> sample_df
+# save rownames (cell names) as a column
+rownames(sample_df) -> sample_df$cell_ids
+# left join
+sample_df %>%
+  left_join(sex_df, by = c("sample_id" = "sample")) -> sex_cell_df
+# add rownames
+rownames(sex_cell_df) <- sex_cell_df$cell_ids
+# delete cell_ids column
+sex_cell_df %>%
+        select(-cell_ids) %>%
+        # combine sex and gender columns
+        mutate(gender = coalesce(sex, gender)) -> sex_cell_df
+# add metadata to Seurat object
+bm.unsorted[["gender"]]<- sex_cell_df$gender
+# check if NA values are present in age and sex columns
+sum(is.na(bm.unsorted[['gender']]))
+bm.unsorted@meta.data %>%
+distinct(project_id, subject_id, sample_id, gender, age)
+```
+### change project_id to shorter names
+
+```{r change project_id to shorter names, eval = FALSE}
+# do the same but with if else statements
+short_proj_id <- ifelse(bm.unsorted$project_id == "HCA_HematopoieticImmuneCellAtlas", "HCA",
+                        ifelse(bm.unsorted$project_id == "GSE120221", "Oejten",
+                              ifelse(bm.unsorted$project_id == "GSE185381", "Nadorp-AML", "")))
+bm.unsorted <- AddMetaData(bm.unsorted, metadata = short_proj_id, col.name = "short_proj_id")
+```
 # Pipeline
 
 ## Choose dataset
 Choose the dataset that you want to run the pipeline on.
-In this case, HCA data is chosen.
+In this case, bm.unsorted data is chosen.
 ```{r choose dataset}
-data <- bm.HCA
+data <- bm.unsorted
 ```
 
 ## QC metrics
@@ -211,8 +261,17 @@ VlnPlot(data, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.
         group.by= "sample_id",
         pt.size = 0, # there are probably way too many points
         ncol = 2) +
-        plot_annotation("QC metrics for one dataset") -> qc_plot
-qc_plot
+        plot_annotation("QC metrics for one dataset") -> qc_plot_sample
+qc_plot_sample
+# by project_id
+VlnPlot(data, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.ribo"),
+        group.by= "short_proj_id",
+        pt.size = 0, # there are probably way too many points
+        ncol = 2) +
+        plot_annotation("QC metrics for one dataset") +
+        # change x labels
+        scale_x_discrete(labels = c("HCA_HematopoieticImmuneCellAtlas" = "HCA", "GSE120221" = "Oejten", "GSE185381" = "Nadorp-AML")) -> qc_plot_project
+qc_plot_project
 ```
 
 We can also plot nFeature_RNA against nCount_RNA to see if there are any outliers.
@@ -222,7 +281,7 @@ data %>%
 FeatureScatter(
           feature1 = "nFeature_RNA",
           feature2 = "nCount_RNA",
-          group.by = "sample"
+          group.by = "short_proj_id",
         ) +
         plot_annotation("nFeature_RNA against nCount_RNA for one dataset") -> qc_featurescatterplot
 qc_featurescatterplot
