@@ -37,8 +37,6 @@ get_earliest_principal_node <- function(monocle3_object) {
 
   root_pr_nodes
 }
-
-
 ```
 ## load data
 

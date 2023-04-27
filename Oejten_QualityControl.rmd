@@ -51,6 +51,7 @@ bm <- PercentageFeatureSet(bm, pattern = "^RPS|^RPL", col.name = "percent.ribo")
 
 # see the new metrics
 head(bm@meta.data, 5)
+
 ```
 
 It is worth noting that the counts seem to be integers.
