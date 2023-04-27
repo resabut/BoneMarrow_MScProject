@@ -120,3 +120,27 @@ sessionInfo()
 
 
 
+# for h5ad files
+## Conda
+```bash
+ mamba install r-reticulate 
+```
+## R
+
+```r
+library(reticulate)
+```
+
+# for loom files
+## conda
+```bash
+mamba install r-hdf5r
+```
+## R
+```r
+library(hdf5r)
+if (!requireNamespace("remotes", quietly = TRUE)) {
+  install.packages("remotes")
+}
+remotes::install_github("mojaveazure/seurat-disk")
+```
