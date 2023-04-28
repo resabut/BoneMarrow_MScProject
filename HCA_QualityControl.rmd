@@ -36,6 +36,7 @@ library(ggplot2)
 library(tidyr)
 library(dittoSeq)
 library(patchwork)
+library(clustree)
 ```
 
 ## load data
@@ -226,6 +227,20 @@ sum(is.na(bm.unsorted[['gender']]))
 bm.unsorted@meta.data %>%
 distinct(project_id, subject_id, sample_id, gender, age)
 ```
+
+### add age_groups metadata
+
+```{r age_groups metadata}
+
+# add age_groups metadata
+# under and over 45
+bm.unsorted <- AddMetaData(bm.unsorted, metadata = ifelse(bm.unsorted$age < 45, "under 45", "over 45"), col.name = "age_groups")
+# check
+bm.unsorted@meta.data %>% distinct(age_groups)
+```
+
+
+
 ### change project_id to shorter names
 
 ```{r change project_id to shorter names, eval = FALSE}
@@ -243,6 +258,23 @@ In this case, bm.unsorted data is chosen.
 ```{r choose dataset}
 data <- bm.unsorted
 ```
+## Explore dataset
+### Age distribution
+```{r age distribution}
+# plot age distribution
+data@meta.data %>%
+        distinct(sample_id, age, short_proj_id) %>%
+  ggplot(aes(x = age)) +
+  geom_histogram(bins = 10) +
+  facet_wrap(~short_proj_id, ncol = 1) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(title = "Age distribution",
+       x = "Age",
+       y = "Count")
+```
+
+
 
 ## QC metrics
 ### Add QC metrics
@@ -351,13 +383,13 @@ data <- ScaleData(data, features = rownames(data)) # scales all the features
 ### save after scaling
 ```{r save after scaling, eval = FALSE}
 # save after scaling
-saveRDS(data, file = "data/HCA/HCA_HematopoieticImmuneCellAtlas_scaled.rds", compress = FALSE)
+saveRDS(data, file = "data/unsorted/unsorted_scaled.rds", compress = FALSE)
 ```
 
 ### Load
 ```{r load, eval = FALSE}
 # load
-data <- readRDS(file = "data/HCA/HCA_HematopoieticImmuneCellAtlas_scaled.rds")
+data <- readRDS(file = "data/unsorted/unsorted_scaled.rds")
 ```
 
 ## Linear dimensional reduction
@@ -387,8 +419,17 @@ data %>%
           group.by = "sample_id",
           label = TRUE
         ) +
-        ggtitle("PCA coloured by sample_id")-> pca_plot
-pca_plot
+        ggtitle("PCA coloured by sample_id")-> pca_plot_sample
+pca_plot_sample
+# by dataset
+data %>%
+        DimPlot(
+          reduction = "pca",
+          group.by = "short_proj_id",
+          label = TRUE
+        ) +
+        ggtitle("PCA coloured by short_proj_id")-> pca_plot_dataset
+pca_plot_dataset
 ```
 
 We can also plot a heatmap of the PCs
@@ -407,16 +448,16 @@ pca_heatmap_plot
 ## Dimensionality of the data
 We can check the dimensionality of the data by looking at how much variance the PCs explain.
 ```{r check dimensionality}
-ElbowPlot(data, ndims = 30) +
+ElbowPlot(data, ndims = 50) +
 ggtitle("Elbow plot")-> elbow_plot
 elbow_plot
 ```
 
 ## Clustering
-Based on the Elbow plot, we can see that the first 10 PCs explain most of the variance.
+Based on the Elbow plot, we can see that the first 20 PCs explain most of the variance.
 We will use the first 10 PCs for clustering.
 ```{r}
-n_pcs <- 10
+n_pcs <- 20
 ```
 
 First we find neighbors among the cells.
@@ -427,6 +468,7 @@ data <- FindNeighbors(data, dims = 1:n_pcs)
 Then we run the clustering algorithm.
 ```{r run clustering algorithm}
 # Select a range of resolutions
+
 resolution.range <- seq(from = 0, to = 1, by = 0.25)
 
 data <- FindClusters(data, resolution = resolution.range)
@@ -435,6 +477,10 @@ data <- FindClusters(data, resolution = resolution.range)
 
 And then we plot the clusters.
 ```{r plot clusters}
+# clustree
+clustree(data, color = "seurat_clusters") +
+  ggtitle("Clustree") -> clustree_plot
+clustree_plot
 data %>%
         DimPlot(
           reduction = "pca",
@@ -482,6 +528,14 @@ data %>%
         # legend at the bottom, and small
         theme(legend.position = "bottom", legend.text = element_text(size = 8)) -> cluster_celltype_umap_plot
 cluster_celltype_umap_plot
+# also by ct
+data %>%
+        DimPlot(
+          reduction = "umap",
+          group.by = "ct",
+          label = TRUE
+        )
+cluster_celltype_umap_plot
 # also by sample
 data %>%
         DimPlot(
@@ -490,6 +544,14 @@ data %>%
           label = TRUE
         ) -> cluster_sampleid_umap_plot
 cluster_sampleid_umap_plot
+# and by dataset
+data %>%
+        DimPlot(
+          reduction = "umap",
+          group.by = "short_proj_id",
+          label = TRUE
+        ) -> cluster_dataset_umap_plot
+cluster_dataset_umap_plot
 # and gender
 data %>%
         DimPlot(
@@ -498,31 +560,79 @@ data %>%
           label = TRUE
         ) -> cluster_sex_umap_plot
 cluster_sex_umap_plot
+# and age
+data %>%
+        DimPlot(
+          reduction = "umap",
+          group.by = "age",
+          label = TRUE
+        ) -> cluster_age_umap_plot
+cluster_age_umap_plot
+
+# plot by age groups
+data %>%
+        DimPlot(
+          reduction = "umap",
+          group.by = "age_groups",
+          label = TRUE
+        ) -> cluster_age_group_umap_plot
+cluster_age_group_umap_plot
 ```
+they do cluster according to cell type, but also dataset, but maybe this is because of age groups.
+When dividing by 45, we see that the clusters are more defined by age group.
+
+
+
 
 ## Frequency of cell types
 ### confirm by cluster
 ```{r frequency of cell types by cluster}
 data %>%
   dittoBarPlot(var = "simplified_ct", group.by = "seurat_clusters") +
-  ggtitle("Simplified cell type frequencies per cluster")-> ct_seu_clusters
-ct_seu_clusters
+  ggtitle("Simplified cell type frequencies per cluster")-> ct_simpl_clusters
+ct_simpl_clusters
+# and ct
+data %>%
+  dittoBarPlot(var = "ct", group.by = "seurat_clusters") +
+  ggtitle("Cell type frequencies per cluster")-> ct_clusters
+ct_clusters
 ```
 ### confirm by sample
 ```{r frequency of cell types by sample}
+# by project
 data %>%
-  dittoBarPlot(var = "simplified_ct", group.by = "sample_id") +
+  dittoBarPlot(var = "simplified_ct", group.by = "sample_id",
+               split.by = "short_proj_id", split.adjust = list(scales = "free") ) +
   plot_annotation("Simplified cell type by sample")-> ct_sample_id
 ct_sample_id
+# by age_groups
+data %>%
+  dittoBarPlot(var = "simplified_ct", group.by = "sample_id",
+               split.by = "age_groups", split.adjust = list(scales = "free") ) +
+  plot_annotation("Simplified cell type by sample")-> ct_sample_id_age
+ct_sample_id_age
 ```
 ### by sex (gender)
 In this dataset, biological sex is named gender
 ```{r frequency of cell types by sex}
 data %>%
-  dittoBarPlot(var = "simplified_ct", group.by = "gender") +
+  dittoBarPlot(var = "simplified_ct", group.by = "gender")
   plot_annotation("Simplified cell type by sex")-> ct_sex
 ct_sex
 
+#split by proj
+data %>%
+  dittoBarPlot(var = "simplified_ct", group.by = "gender",
+                 split.by = "short_proj_id", split.adjust = list(scales = "free") ) +
+  plot_annotation("Simplified cell type by sex")-> ct_sex_proj
+ct_sex_proj
+
+# but only under 45
+subset(data, subset = age_groups == "under 45") %>%
+  dittoBarPlot(var = "simplified_ct", group.by = "gender",
+                 split.by = "short_proj_id", split.adjust = list(scales = "free") ) +
+  plot_annotation("Simplified cell type by sex for individuals under 45") -> ct_sex_proj_under45
+ct_sex_proj_under45
 ```
 
 We can also plot it by individual
@@ -772,6 +882,40 @@ data@meta.data %>%
   facet_wrap(~ct, scales = "free") +
   labs(title = "Absolute counts") -> counts_per_celltype_plot
 ```
+### plot with for loop
+
+```{r plot with for loop}
+simplified_ct_list <- data@meta.data %>% distinct(simplified_ct)
+simplified_ct_plot_list <- list()
+# plot with for loop
+for (i in seq_along(simplified_ct_list$simplified_ct)) {
+        cell_type <- simplified_ct_list$simplified_ct[i]
+        data@meta.data %>%
+                filter(age_groups == "under 45") %>% # only young ppl
+                group_by(sample_id, gender, age, short_proj_id, ct, simplified_ct) %>%
+                summarise(N = n()) %>%
+                mutate(freq = N / sum(N)) %>%
+
+                ungroup() %>%
+                complete(sample_id, gender, age, short_proj_id,
+                         fill = list(N = 0, freq = 0)) %>%
+                ggplot(aes(x = gender, y = freq)) +
+                geom_boxplot() +
+                geom_point(aes(color = short_proj_id)) +
+                geom_text(aes(label = age), size = 3, vjust = -0.5) +
+                facet_wrap(~ct, scales = "free") +
+                labs(title = paste0("Distribution per ", cell_type)) -> plot
+
+        assign(paste0(gsub(" ", "_", cell_type), "_plot"), plot)
+        simplified_ct_plot_list <- c(simplified_ct_plot_list, mget(paste0(gsub(" ", "_", cell_type), "_plot")))
+}
+```
+to saved them all in a pdf
+```{r}
+pdf("data/unsorted/young_individual_celltype_distribution.pdf", width = 10, height = 10)
+simplified_ct_plot_list
+dev.off()
+```
 
 ## Differential expression
 ### Plot known markers
@@ -812,10 +956,10 @@ markers2_plot
 markers3_plot
 markers4_plot
 # save to png with ggplot
-ggsave("data/HCA/HCA_HematopoieticImmuneCellAtlas_markers1_plot.png", markers1_plot, width = 11, height = 8.5)
-ggsave("data/HCA/HCA_HematopoieticImmuneCellAtlas_markers2_plot.png", markers2_plot, width = 11, height = 8.5)
-ggsave("data/HCA/HCA_HematopoieticImmuneCellAtlas_markers3_plot.png", markers3_plot, width = 11, height = 8.5)
-ggsave("data/HCA/HCA_HematopoieticImmuneCellAtlas_markers4_plot.png", markers4_plot, width = 11, height = 8.5)
+ggsave("data/unsorted/markers1", markers1_plot, width = 11, height = 8.5)
+ggsave("data/unsorted/markers2", markers2_plot, width = 11, height = 8.5)
+ggsave("data/unsorted/markers3", markers3_plot, width = 11, height = 8.5)
+ggsave("data/unsorted/markers4", markers4_plot, width = 11, height = 8.5)
 
 ```
 
@@ -834,14 +978,19 @@ ggsave("data/HCA/HCA_HematopoieticImmuneCellAtlas_markers4_plot.png", markers4_p
 ## RDS file
 ```{r save, eval = FALSE}
 # save
-saveRDS(data, file = "data/HCA/HCA_HematopoieticImmuneCellAtlas.rds", compress = FALSE)
+saveRDS(data, file = "data/unsorted/unsorted_clustered.rds", compress = FALSE)
+```
+to load it
+```{r load, eval = FALSE}
+# load
+data <- readRDS("data/unsorted/unsorted_clustered.rds")
 ```
 
 ## plots
 ```{r save plots, eval = FALSE}
 # save all plots to pdf
 plot_list <- list(ct_freq_individual_plot, simplified_ct_freq_individual_plot, Tcell_freq_individual_plot, monocyte_freq_individual_plot, progenitor_cells_freq_individual_plot, B_cell_freq_individual_plot, Dendritic_freq_individual_plot, eryhtro_freq_individual_plot, NK_freq_individual_plot, Neutrophils_freq_individual_plot, counts_per_celltype_plot)
-pdf("data/HCA/HCA_HematopoieticImmuneCellAtlas_plots.pdf", width = 11, height = 8.5)
+pdf("data/unsorted/plots.pdf", width = 11, height = 8.5)
 plot_list
 dev.off()
 ```
