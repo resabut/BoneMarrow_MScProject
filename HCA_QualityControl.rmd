@@ -887,24 +887,15 @@ data@meta.data %>%
 ```{r plot with for loop}
 simplified_ct_list <- data@meta.data %>% distinct(simplified_ct)
 simplified_ct_plot_list <- list()
+Idents(data) <- data$simplified_ct
 # plot with for loop
 for (i in seq_along(simplified_ct_list$simplified_ct)) {
         cell_type <- simplified_ct_list$simplified_ct[i]
-        data@meta.data %>%
-                filter(age_groups == "under 45") %>% # only young ppl
-                group_by(sample_id, gender, age, short_proj_id, ct, simplified_ct) %>%
-                summarise(N = n()) %>%
-                mutate(freq = N / sum(N)) %>%
-
-                ungroup() %>%
-                complete(sample_id, gender, age, short_proj_id,
-                         fill = list(N = 0, freq = 0)) %>%
-                ggplot(aes(x = gender, y = freq)) +
-                geom_boxplot() +
-                geom_point(aes(color = short_proj_id)) +
-                geom_text(aes(label = age), size = 3, vjust = -0.5) +
-                facet_wrap(~ct, scales = "free") +
-                labs(title = paste0("Distribution per ", cell_type)) -> plot
+        dittoFreqPlot(data, "ct", sample.by = "sample_id",
+                      group.by = "gender",
+        color.by= "short_proj_id",
+                      cells.use = rownames(data@meta.data)[which(data[["simplified_ct"]] == cell_type)],
+        main = paste0(cell_type, " frequency")) -> plot
 
         assign(paste0(gsub(" ", "_", cell_type), "_plot"), plot)
         simplified_ct_plot_list <- c(simplified_ct_plot_list, mget(paste0(gsub(" ", "_", cell_type), "_plot")))
