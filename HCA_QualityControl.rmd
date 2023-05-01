@@ -883,19 +883,50 @@ data@meta.data %>%
   labs(title = "Absolute counts") -> counts_per_celltype_plot
 ```
 ### plot with for loop
-
+#### all ages
 ```{r plot with for loop}
-simplified_ct_list <- data@meta.data %>% distinct(simplified_ct)
+simplified_ct_list <- data@meta.data %>% distinct(simplified_ct, ct)
 simplified_ct_plot_list <- list()
 Idents(data) <- data$simplified_ct
 # plot with for loop
-for (i in seq_along(simplified_ct_list$simplified_ct)) {
-        cell_type <- simplified_ct_list$simplified_ct[i]
+for (i in seq_along(simplified_ct_list$simplified_ct %>% unique())) {
+        cell_type <- unique(simplified_ct_list$simplified_ct)[i]
+        print(cell_type)
+        ct_list <- simplified_ct_list %>% filter(simplified_ct == cell_type) %>% pull(ct)
         dittoFreqPlot(data, "ct", sample.by = "sample_id",
                       group.by = "gender",
-        color.by= "short_proj_id",
-                      cells.use = rownames(data@meta.data)[which(data[["simplified_ct"]] == cell_type)],
-        main = paste0(cell_type, " frequency")) -> plot
+        #color.by= "short_proj_id",
+                      max.normalize = TRUE,
+                      vars.use = ct_list,
+        main = paste0(cell_type, " frequency all ages")) -> plot
+
+        assign(paste0(gsub(" ", "_", cell_type), "_plot"), plot)
+        simplified_ct_plot_list <- c(simplified_ct_plot_list, mget(paste0(gsub(" ", "_", cell_type), "_plot")))
+}
+```
+to saved them all in a pdf
+```{r}
+pdf("data/unsorted/all_ages_individual_celltype_distribution.pdf", width = 10, height = 10)
+simplified_ct_plot_list
+dev.off()
+```
+#### under 45
+```{r plot with for loop}
+simplified_ct_list <- data@meta.data %>% distinct(simplified_ct, ct)
+simplified_ct_plot_list <- list()
+Idents(data) <- data$simplified_ct
+# plot with for loop
+for (i in seq_along(simplified_ct_list$simplified_ct %>% unique())) {
+        cell_type <- unique(simplified_ct_list$simplified_ct)[i]
+        print(cell_type)
+        ct_list <- simplified_ct_list %>% filter(simplified_ct == cell_type) %>% pull(ct)
+        dittoFreqPlot(data, "ct", sample.by = "sample_id",
+                      group.by = "gender",
+        #color.by= "short_proj_id",
+                      max.normalize = TRUE,
+                      vars.use = ct_list,
+                      cells.use = rownames(data@meta.data)[which(data[["age_groups"]] == "under 45")],
+        main = paste0(cell_type, " frequency under 45")) -> plot
 
         assign(paste0(gsub(" ", "_", cell_type), "_plot"), plot)
         simplified_ct_plot_list <- c(simplified_ct_plot_list, mget(paste0(gsub(" ", "_", cell_type), "_plot")))
@@ -907,6 +938,7 @@ pdf("data/unsorted/young_individual_celltype_distribution.pdf", width = 10, heig
 simplified_ct_plot_list
 dev.off()
 ```
+
 
 ## Differential expression
 ### Plot known markers
