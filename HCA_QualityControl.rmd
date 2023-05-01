@@ -115,54 +115,43 @@ celltypes_list
 ## simplify cell types
 ```{r simplify cell types}
 # some major groups
-b_cells <- c("Naive B cell", "Memory B cell", "Plasma cell", "preB cell", "preB cell (cycling)", "proB cell", "proB cell (cycling)")
-t_cells <- c("Naive CD8 T cell", "Effector/Memory CD4 T cell", "Naive CD4 T cell",
-             "GZMK+ CD8 T cell", "Gamma-delta T cell", "IFN-activated T cell", "Treg", "GZMB+ CD8 T cell", "MAIT")
-nk_cells <- c("CD16+ NK", "Tissue-resident NK cell", "CD56+ NK")
+b_cells <- c("Naive B cell", "Memory B cell", "Plasma cell", "preB cell", "preB cell (cycling)", "proB cell", "proB cell (cycling)", "Plasma cell")
+t_nk_cells<- c("Naive CD8 T cell", "Effector/Memory CD4 T cell", "Naive CD4 T cell",
+             "GZMK+ CD8 T cell", "Gamma-delta T cell", "IFN-activated T cell", "Treg", "GZMB+ CD8 T cell", "MAIT", "T/NK cell (cycling)","CD16+ NK", "Tissue-resident NK cell", "CD56+ NK", ilc <- "ILC")
 erythrocytes <- c("Early SOX4+ erythroblast", "Late hemoglobin+ erythroblast", "Fetal HBG+ erythrocyte",
                   "Intermediate EPCAM+ erythroblast", "Erythrocyte")
-monocytes <- c("CD14+MHCIIhigh monocyte", "CD14+MHCIIlow monocyte", "CD16+ monocyte")
-neutrophils <- c("S100A+ preNeutrophil (cycling)", "S100A+ preNeutrophil", "Metamyelocyte/Band neutrophil",
-                 "Neutrophil", "Promyelocyte", "Myelocyte")
+monocytes <- c("CD14+MHCIIhigh monocyte", "CD14+MHCIIlow monocyte", "Macrophage", "CD16+ monocyte")
+granulocyte <- c("S100A+ preNeutrophil (cycling)", "S100A+ preNeutrophil", "Metamyelocyte/Band neutrophil",
+                 "Neutrophil", "Promyelocyte", "Myelocyte", "Mast cell")
 dendritic_cells <- c("pre-pDC (lymphoid origin)", "pre-pDC (myeloid origin)", "cDC2", "cDC2 (cycling)", "cDC1", "pDC")
-megakaryocytes <- c("Megakaryocyte", "Megakaryocyte progenitor")
-platelets <- "Platelet"
-hsc <- "HSC"
-progenitor_cells <- c("CLP", "CMP", "GMP", "MEP", "MPP", "CDP")
-plasma_cells <- "Plasma cell"
-macrophages <- c("Macrophage", "CD16+ monocyte")
-mast_cells <- "Mast cell"
-ilc <- "ILC"
-mesenchymal_cells <- c("Fibroblast", "Mesenchymal stromal cell")
-osteoclasts <- "Osteoclast"
-T_NK <- "T/NK cell (cycling)"
+Mk <- c("Megakaryocyte", "Megakaryocyte progenitor", "Platelet")
+
+progenitor_cells <- c("CLP", "CMP", "GMP", "MEP", "MPP", "CDP", "HSC")
+
+stroma <- c("Fibroblast", "Mesenchymal stromal cell", "Osteoclast")
 
 # add a column with the simplified cell type name
-
 simplified_ct <- ifelse(bm$ct %in% b_cells, "B cells",
-                        ifelse(bm$ct %in% t_cells, "T cells",
-                               ifelse(bm$ct %in% nk_cells, "NK cells",
+                        ifelse(bm$ct %in% t_nk_cells, "T or NK cells",
                                       ifelse(bm$ct %in% erythrocytes, "Erythrocytes",
                                              ifelse(bm$ct %in% monocytes, "Monocytes",
-                                                    ifelse(bm$ct %in% neutrophils, "Neutrophils",
+                                                    ifelse(bm$ct %in% granulocyte, "Granulocytes",
                                                            ifelse(bm$ct %in% dendritic_cells, "Dendritic cells",
-                                                                  ifelse(bm$ct %in% megakaryocytes, "Megakaryocytes",
+                                                                  ifelse(bm$ct %in% Mk, "Megakaryocytes",
                                                                          ifelse(bm$ct %in% platelets, "Platelets",
-                                                                                ifelse(bm$ct %in% hsc, "HSC",
                                                                                        ifelse(bm$ct %in% progenitor_cells, "Progenitor cells",
-                                                                                              ifelse(bm$ct %in% plasma_cells, "Plasma cells",
-                                                                                                     ifelse(bm$ct %in% macrophages, "Macrophages",
-                                                                                                            ifelse(bm$ct %in% mast_cells, "Mast cells",
-                                                                                                                   ifelse(bm$ct %in% ilc, "ILC",
-                                                                                                                          ifelse(bm$ct %in% mesenchymal_cells, "Mesenchymal cells",
-                                                                                                                                 ifelse(bm$ct %in% osteoclasts, "Osteoclasts",
-                                                                                                                                        ifelse(bm$ct %in% T_NK, "T/NK cells",
-                                                                                                                                        "Unknown"))))))))))))))))))
+                                                                                              ifelse(bm$ct %in% stroma, "Stroma",
+                                                                                                                                        "Unknown"))))))))))
 
 bm <- AddMetaData(bm, metadata = simplified_ct, col.name = "simplified_ct")
 
 # check
 ```
+
+
+
+
+
 ### add sex (gender) metadata
 
 ```{r sex and age metadata}
