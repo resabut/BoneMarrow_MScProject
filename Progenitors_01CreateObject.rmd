@@ -1,0 +1,66 @@
+---
+title: "CD34 Analysis"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# image size
+options(jupyter.plot_mimetypes = 'image/png',
+        repr.plot.width=6,
+        repr.plot.height=4)
+```
+# Load
+## load packages
+```{r load packages, message=FALSE, warning=FALSE}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(dittoSeq)
+library(patchwork)
+library(clustree)
+```
+
+## load data
+```{r load data}
+# load data
+bm <- readRDS("data/DISCO/bmv2_fix.rds")
+```
+# Subset for HSPCs+ cells
+
+## Explore cell data
+```{r explore cell data}
+# check projects and possible gating
+bm@meta.data %>%
+         distinct(project_id, platform, cell_sorting, tissue) -> projects
+projects
+# see cell types
+# see which cell types are in which project
+bm@meta.data %>%
+  distinct(ct, project_id) -> celltypes
+celltypes
+celltypes$present <- 1
+# make a matrix that maps if ct is in project_id
+celltypes %>%
+  pivot_wider(names_from = project_id, values_from = present) -> celltypes_wider
+celltypes_wider
+
+# print the list
+celltypes %>%
+distinct(ct) %>%
+  pull(ct) -> celltypes_list
+celltypes_list
+
+```
+
+
+
+```{r subset}
+HSPCs <- c("preB cell", "proB cell", "preB cell (cycling)", "proB cell (cycling)", "CMP", "MEP", "GMP", "CDP", "MPP", "HSC", "CLP")
+
+# subset for CD34+ cells
+bm.cd34 <- subset(bm, idents = "CD34+")
+```
+
+
