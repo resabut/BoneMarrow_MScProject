@@ -1,5 +1,5 @@
 ---
-title: "CD34 Analysis"
+title: "Progenitor Analysis"
 output: html_notebook
 ---
 
@@ -25,42 +25,37 @@ library(clustree)
 ## load data
 ```{r load data}
 # load data
-bm <- readRDS("data/DISCO/bmv2_fix.rds")
+bm <- readRDS("data/DISCO/bmv2_fixed.rds")
 ```
-# Subset for HSPCs+ cells
-
-## Explore cell data
-```{r explore cell data}
-# check projects and possible gating
-bm@meta.data %>%
-         distinct(project_id, platform, cell_sorting, tissue) -> projects
-projects
-# see cell types
-# see which cell types are in which project
-bm@meta.data %>%
-  distinct(ct, project_id) -> celltypes
-celltypes
-celltypes$present <- 1
-# make a matrix that maps if ct is in project_id
-celltypes %>%
-  pivot_wider(names_from = project_id, values_from = present) -> celltypes_wider
-celltypes_wider
-
-# print the list
-celltypes %>%
-distinct(ct) %>%
-  pull(ct) -> celltypes_list
-celltypes_list
-
-```
+# Subset for Progenitor cells
 
 
-
+We can use the simplified annotation to subset for progenitor cells.
 ```{r subset}
-HSPCs <- c("preB cell", "proB cell", "preB cell (cycling)", "proB cell (cycling)", "CMP", "MEP", "GMP", "CDP", "MPP", "HSC", "CLP")
-
 # subset for CD34+ cells
-bm.cd34 <- subset(bm, idents = "CD34+")
+bm.progenitors <- subset(bm, subset = simplified_ct == "Progenitor cells")
+# take only those with sex information
+bm.progenitors <- subset(bm.progenitors, subset = gender %in% c("F", "M"))
+# only that can be classified under 45
+bm.progenitors <- subset(bm.progenitors, subset = age_groups == "under 45")
+```
+# Re-process
+```{r reprocess}
+
+bm.progenitors <- FindVariableFeatures(object = bm.progenitors)
+# reintegrate data
+bm.progenitors <- ScaleData(object = bm.progenitors)
+bm.progenitors <- RunPCA(object = bm.progenitors)
+bm.progenitors <- FindNeighbors(object = bm.progenitors)
+bm.progenitors <- FindClusters(object = bm.progenitors)
+bm.progenitors <- RunUMAP(object = bm.progenitors, dims = 1:30)
+DimPlot(object = bm.progenitors, reduction = "umap", group.by = "ct", label = TRUE)
+```
+
+
+## save subset data
+```{r save subset}
+saveRDS(bm.progenitors, "data/DISCO/bmv2_fixed_progenitors.rds", compress = FALSE)
 ```
 
 
