@@ -163,7 +163,61 @@ bm <- AddMetaData(bm, metadata = simplified_ct, col.name = "simplified_ct")
 
 # check
 ```
+### add sex (gender) metadata
 
+```{r sex and age metadata}
+sex_df <- read.csv("data/unsorted/GSE120221.csv", header = TRUE, sep = ",")
+# get sample - cell id metadata
+sample_df <- bm@meta.data %>%
+  select(sample_id, gender) -> sample_df
+# save rownames (cell names) as a column
+rownames(sample_df) -> sample_df$cell_ids
+# left join
+sample_df %>%
+  left_join(sex_df, by = c("sample_id" = "sample")) -> sex_cell_df
+# add rownames
+rownames(sex_cell_df) <- sex_cell_df$cell_ids
+# delete cell_ids column
+sex_cell_df %>%
+        select(-cell_ids) %>%
+        # combine sex and gender columns
+        mutate(gender = coalesce(sex, gender)) -> sex_cell_df
+# add metadata to Seurat object
+bm[["gender"]]<- sex_cell_df$gender
+# check if NA values are present in age and sex columns
+sum(is.na(bm[['gender']]))
+bm@meta.data %>%
+distinct(project_id, subject_id, sample_id, gender, age)
+```
+
+### add age_groups metadata
+
+```{r age_groups metadata}
+
+# add age_groups metadata
+# under and over 45
+bm <- AddMetaData(bm, metadata = ifelse(bm$age < 45, "under 45", "over 45"), col.name = "age_groups")
+# check
+bm@meta.data %>% distinct(age_groups)
+```
+
+
+
+### change project_id to shorter names
+
+```{r change project_id to shorter names, eval = FALSE}
+# do the same but with if else statements
+short_proj_id <- ifelse(bm$project_id == "HCA_HematopoieticImmuneCellAtlas", "HCA",
+                        ifelse(bm$project_id == "GSE120221", "Oejten",
+                              ifelse(bm$project_id == "GSE185381", "Nadorp-AML", "")))
+bm <- AddMetaData(bm, metadata = short_proj_id, col.name = "short_proj_id")
+```
+
+## Save fixed object
+
+```{r save fixed object}
+saveRDS(bm, "data/DISCO/bmv2_fixed.rds")
+```
 
 
 
@@ -201,55 +255,7 @@ bm.unsorted <- subset(bm, subset = project_id %in% project_id_list)
 bm.unsorted@meta.data %>%
 distinct(project_id, subject_id, sample_id, gender, age)
 ```
-### add sex (gender) metadata
 
-```{r sex and age metadata}
-sex_df <- read.csv("data/unsorted/GSE120221.csv", header = TRUE, sep = ",")
-# get sample - cell id metadata
-sample_df <- bm.unsorted@meta.data %>%
-  select(sample_id, gender) -> sample_df
-# save rownames (cell names) as a column
-rownames(sample_df) -> sample_df$cell_ids
-# left join
-sample_df %>%
-  left_join(sex_df, by = c("sample_id" = "sample")) -> sex_cell_df
-# add rownames
-rownames(sex_cell_df) <- sex_cell_df$cell_ids
-# delete cell_ids column
-sex_cell_df %>%
-        select(-cell_ids) %>%
-        # combine sex and gender columns
-        mutate(gender = coalesce(sex, gender)) -> sex_cell_df
-# add metadata to Seurat object
-bm.unsorted[["gender"]]<- sex_cell_df$gender
-# check if NA values are present in age and sex columns
-sum(is.na(bm.unsorted[['gender']]))
-bm.unsorted@meta.data %>%
-distinct(project_id, subject_id, sample_id, gender, age)
-```
-
-### add age_groups metadata
-
-```{r age_groups metadata}
-
-# add age_groups metadata
-# under and over 45
-bm.unsorted <- AddMetaData(bm.unsorted, metadata = ifelse(bm.unsorted$age < 45, "under 45", "over 45"), col.name = "age_groups")
-# check
-bm.unsorted@meta.data %>% distinct(age_groups)
-```
-
-
-
-### change project_id to shorter names
-
-```{r change project_id to shorter names, eval = FALSE}
-# do the same but with if else statements
-short_proj_id <- ifelse(bm.unsorted$project_id == "HCA_HematopoieticImmuneCellAtlas", "HCA",
-                        ifelse(bm.unsorted$project_id == "GSE120221", "Oejten",
-                              ifelse(bm.unsorted$project_id == "GSE185381", "Nadorp-AML", "")))
-bm.unsorted <- AddMetaData(bm.unsorted, metadata = short_proj_id, col.name = "short_proj_id")
-```
 # Pipeline
 
 ## Choose dataset
