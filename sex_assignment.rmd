@@ -1,0 +1,72 @@
+---
+title: "Sex assignment with cellXY"
+output: html_notebook
+---
+
+
+```{r}
+library(cellXY)
+library(SingleCellExperiment)
+library(org.Hs.eg.db)
+library(Seurat)
+
+seurat_obj <- readRDS("data/seurat_obj/Oejten_scRNAseq.rds")
+sc_data <- as.SingleCellExperiment(seurat_obj)
+sc_10x <- sc_data$sc_10x
+
+counts <- counts(sc_data)
+# ann <- select(org.Hs.eg.db, keys=rownames(sc_data),
+#               columns=c("ENSEMBL","SYMBOL"), keytype="ENSEMBL")
+# m <- match(rownames(counts), ann$ENSEMBL)
+# rownames(counts) <- ann$SYMBOL[m]
+
+sex <- classifySex(counts, genome="Hs")
+
+table(sex$prediction)
+boxplot(counts["XIST",]~sex$prediction)
+```
+
+
+# add metadata
+```{r}
+seurat_obj <- AddMetaData(seurat_obj, metadata = sex, col.name = "sex_predicted")
+```
+## plot sex freq
+```{r}
+seurat_obj %>% dittoBarPlot(var = "sex_predicted", group.by = "sample")
+```
+
+
+# DISCO bm v2
+```{r}
+disco_bm_v2 <- readRDS("data/DISCO/bmv2_fixed.rds")
+sc_data <- as.SingleCellExperiment(disco_bm_v2)
+
+counts <- counts(sc_data)
+
+sexbm <- classifySex(counts, genome="Hs")
+
+table(sexbm$prediction)
+boxplot(counts["XIST",]~sexbm$prediction)
+```
+
+# add metadata
+```{r}
+disco_bm_v2 <- AddMetaData(disco_bm_v2, metadata = sexbm, col.name = "sex_predicted")
+```
+## plot sex freq
+```{r}
+disco_bm_v2@meta.data %>%
+  distinct(sample_id, gender, subject_id, project_id, platform) -> gender_indiv
+gender_indiv
+
+disco_bm_v2 %>%
+  dittoBarPlot(var = "sex_predicted", group.by = "sample_id", split.by = "project_id", split.adjust = list(scales = "free")) -> sex_prediction_disco_bm_v2
+
+```
+
+
+# save seurat obj
+```{r}
+saveRDS(disco_bm_v2, "data/DISCO/bmv2_fixed.rds", compress = FALSE)
+```
