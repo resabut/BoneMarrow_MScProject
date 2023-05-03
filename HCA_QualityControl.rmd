@@ -138,17 +138,14 @@ simplified_ct <- ifelse(bm$ct %in% b_cells, "B cells",
                                                     ifelse(bm$ct %in% granulocyte, "Granulocytes",
                                                            ifelse(bm$ct %in% dendritic_cells, "Dendritic cells",
                                                                   ifelse(bm$ct %in% Mk, "Megakaryocytes",
-                                                                         ifelse(bm$ct %in% platelets, "Platelets",
                                                                                        ifelse(bm$ct %in% progenitor_cells, "Progenitor cells",
                                                                                               ifelse(bm$ct %in% stroma, "Stroma",
-                                                                                                                                        "Unknown"))))))))))
+                                                                                                                                        "Unknown")))))))))
 
 bm <- AddMetaData(bm, metadata = simplified_ct, col.name = "simplified_ct")
 
 # check
 ```
-
-
 
 
 
@@ -179,6 +176,35 @@ bm@meta.data %>%
 distinct(project_id, subject_id, sample_id, gender, age)
 ```
 
+We can also detect the expression of Y-linked genes
+
+```{r Y-linked genes}
+# y-linked genes
+y_genes <- c("USP9Y", "EIF1AY", "TTTY10", "TTTY14", "KDM5D", "RPS4Y1", "ZFY", "ZFY-AS1", "DDX3Y", "UTY", "TMSB4Y", "NLGN4Y", "LINC00278", "RPS4Y2", "PCDH11Y")
+x_fem_genes <- c("XIST")
+
+# bm <- ScaleData(bm) # it needs to be scaled
+ave_exp <- AverageExpression(bm, features = c(y_genes, x_fem_genes), group.by = "sample_id")[[1]] %>% t()  %>% as.data.frame() %>% arrange(desc(XIST))
+bm$sample_id <- factor(bm$sample_id, levels = rownames(ave_exp))
+Idents(bm) <- bm$sample_id
+# DoHeatmap(subset(bm, downsample=10), features=c(y_genes, x_fem_genes),
+#           group.by = "sample_id",
+#           slot = "scale.data",
+#           angle = 90) +
+# #remove legend
+# NoLegend() -> sex_genes_heatmap
+# sex_genes_heatmap
+
+
+
+combined_averages <- AverageExpression(bm,return.seurat = TRUE, assays = "RNA", features = c(y_genes, x_fem_genes), add.ident = "sample_id")
+DoHeatmap(combined_averages, features=c(y_genes, x_fem_genes),
+          slot = "scale.data",
+          angle = 90, size = 2) + NoLegend()
+
+```
+
+
 ### add age_groups metadata
 
 ```{r age_groups metadata}
@@ -205,7 +231,7 @@ bm <- AddMetaData(bm, metadata = short_proj_id, col.name = "short_proj_id")
 ## Save fixed object
 
 ```{r save fixed object}
-saveRDS(bm, "data/DISCO/bmv2_fixed.rds")
+saveRDS(bm, "data/DISCO/bmv2_fixed.rds", compress = FALSE)
 ```
 
 
@@ -529,8 +555,8 @@ data %>%
           reduction = "umap",
           group.by = "ct",
           label = TRUE
-        )
-cluster_celltype_umap_plot
+        ) -> ct
+ct
 # also by sample
 data %>%
         DimPlot(
@@ -933,6 +959,47 @@ pdf("data/unsorted/young_individual_celltype_distribution.pdf", width = 10, heig
 simplified_ct_plot_list
 dev.off()
 ```
+
+### plot with ggplot manually
+This extracts the frequency data from dittoFreqPlot and plots the right frequencies with individual scales.
+#### under 45
+```{r}
+
+simplified_ct_list <- data@meta.data %>% distinct(simplified_ct, ct)
+simplified_ct_plot_list <- list()
+Idents(data) <- data$simplified_ct
+# plot with for loop
+for (i in seq_along(simplified_ct_list$simplified_ct %>% unique())) {
+        cell_type <- unique(simplified_ct_list$simplified_ct)[i]
+        print(cell_type)
+        ct_list <- simplified_ct_list %>% filter(simplified_ct == cell_type) %>% pull(ct)
+        dittoFreqPlot(data, "ct", sample.by = "sample_id",
+                      group.by = "gender",
+        #color.by= "short_proj_id",
+                      max.normalize = TRUE,
+                      vars.use = ct_list,
+                      cells.use = rownames(data@meta.data)[which(data[["age_groups"]] == "under 45")],
+                      data.out = TRUE,
+        main = paste0(cell_type, " frequency under 45")) -> freq.data
+        freq.data[[2]] %>%
+                ggplot(aes(x = grouping, y = percent)) +
+                geom_boxplot() +
+                geom_point() +
+                facet_wrap(~label, scales = "free") +
+                labs(title = paste0(cell_type, " frequency under 45")) -> plot
+
+        assign(paste0(gsub(" ", "_", cell_type), "_plot"), plot)
+        simplified_ct_plot_list <- c(simplified_ct_plot_list, mget(paste0(gsub(" ", "_", cell_type), "_plot")))
+}
+```
+
+Save them all in a pdf
+```{r}
+pdf("data/unsorted/young_individual_celltype_distribution.pdf", width = 10, height = 10)
+simplified_ct_plot_list
+dev.off()
+```
+
 
 
 ## Differential expression
