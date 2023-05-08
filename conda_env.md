@@ -36,6 +36,15 @@ remotes::install_version('speedglm', '0.3-4', repos = 'https://packagemanager.rs
 # For curatedatlastqueryr
 
 remotes::install_github("stemangiola/CuratedAtlasQueryR")
+
+# for cell xy
+ mamba install -c bioconda bioconductor-annotationdbi
+remotes::install_github("phipsonlab/cellxy")
+
+# for speckle
+mamba install r-locfit bioconductor-edger
+remotes::install_github("phipsonlab/speckle")
+
 ```
 
 
