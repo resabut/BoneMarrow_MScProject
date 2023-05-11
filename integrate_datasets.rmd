@@ -1,0 +1,282 @@
+---
+title: "Integrate from DISCO chosen projects"
+output: html_notebook
+---
+```{r}
+setwd("01_Integration/")
+library(Seurat)
+library(pbmcapply)
+library(scDblFinder)
+library(BiocParallel)
+library(stringr)
+library(FastIntegration)
+```
+```{r}
+options(bitmapType = "cairo")
+`%!in%` <- Negate('%in%')
+meta <- FindSampleByMetadata()
+
+meta <- meta[which(meta$tissue == "bone marrow"),]
+meta <- meta[grep("10", meta$platform),]
+meta <- meta[which(meta$sampleType == "Normal"),]
+meta <- meta[which(meta$projectId %in% c("HCA_HematopoieticImmuneCellAtlas", "GSE120221") ),]
+```
+Download data from DISCO
+```{r}
+DownloadDiscoData(meta, dir = "./disco")
+```
+```{r}
+rna.list <- pbmclapply(
+  1:nrow(meta), function(i) {
+          # read data
+    rna <- readRDS(paste0("disco/", meta$sampleId[i], ".rds"))
+          # rename cells
+    rna <- RenameCells(rna, new.names = paste0(Cells(rna), "--", meta$sampleId[i]))
+            # add metadata
+    rna@assays$RNA@counts <- sweep(expm1(rna@assays$RNA@data), 2, rna$nCount_RNA, `*`) /10000
+    # add metadata, mitochondria and ribosomal percentage
+    rna[["percent.mt"]] <- PercentageFeatureSet(rna, pattern = "^MT-")
+    rna[["percent.rp"]] <- PercentageFeatureSet(rna, pattern = "^RP[S|L]")
+    # keep singlets only
+    sce <- scDblFinder(as.SingleCellExperiment(rna))
+    rna <- subset(rna, cells = Cells(rna)[which(sce@colData@listData[["scDblFinder.class"]] == "singlet")])
+    # pre-process
+    rna <- NormalizeData(rna)
+    rna <- FindVariableFeatures(rna)
+    # return preprocessed object
+    return(rna)
+  }, mc.cores = 10
+)
+
+```
+
+IDk what this is
+
+```{r}
+# at least 500 cells per sample
+rna.list <- rna.list[which(unlist(lapply(rna.list, ncol)) > 500)]
+# 33538 features in total (???)
+rna.list <- rna.list[which(unlist(lapply(rna.list, nrow)) == 33538)]
+
+```
+Save the list
+```{r}
+saveRDS(rna.list, "rna.list.rds", compress = FALSE)
+```
+
+Integrate and find anchors
+
+```{r}
+BuildIntegrationFile(rna.list = rna.list, tmp.dir = "./", nCores = 30, nfeatures = 3000)
+FastFindAnchors(tmp.dir = "./", nCores = 100)
+genes <- readRDS("FastIntegrationTmp/raw/1.rds")
+genes <- rownames(genes)
+idx <- split(1:length(genes), cut(1:length(genes), 20, labels = FALSE))
+
+pbmclapply(
+  1:20, function(i) {
+    rna.integrated <- FastIntegration(tmp.dir = "./", npcs = 1:30, slot = "data", cut.low = -0.1,
+                                      features.to.integrate = genes[idx[[i]]])
+    saveRDS(rna.integrated, paste0("./FastIntegrationTmp/inte/inte_", i, ".rds"),
+            compress = F)
+  }, mc.cores = 20
+)
+```
+
+
+
+
+
+After integration
+```{r}
+rm(list=ls())
+library(Seurat)
+library(pbmcapply)
+library(stringr)
+library(Matrix)
+library(FastIntegration)
+options(bitmapType = "cairo") # original said cairao
+`%!in%` <- Negate('%in%')
+```
+```{r}
+# read RNA and feature data
+features <- readRDS("FastIntegrationTmp/others/features.rds")
+rna.data <- pbmclapply(
+  1:20, function(i) {
+    rna <- readRDS(paste0("./FastIntegrationTmp/inte/inte_", i, ".rds"))
+    rna <- rna[intersect(rownames(rna), features),, drop=F]
+    return(rna)
+  }, mc.cores = 20
+)
+```
+```{r}
+# create Seurat object
+rna.data <- do.call(rbind, rna.data)
+rna.data <- CreateSeuratObject(rna.data)
+# pre process data
+rna.data <- ScaleData(rna.data, features = features)
+rna.data <- RunPCA(rna.data, npcs = 30, features = features)
+rna.data <- RunUMAP(rna.data, dims = 1:30)
+rna.data <- FindNeighbors(rna.data, dims = 1:30)
+rna.data <- FindClusters(rna.data, graph.name = "RNA_snn", algorithm = 2, resolution = 2, )
+
+rna.list <- readRDS("rna.list.rds") # original said rna_list, but that is not the name of the file
+idx <- split(sample(1:length(rna.list), size = length(rna.list)),
+             cut(1:length(rna.list), round(length(rna.list)/5), labels = FALSE))
+```
+
+
+
+I am not sure what this is
+```{r}
+rna.bind <- pbmcapply::pbmclapply(
+  idx, function(i) {
+    rna.bind <- rna.list[[i[1]]]@assays$RNA@data
+    for (j in i[2:length(i)]) {
+      rna.bind <- cbind(rna.bind, rna.list[[j]]@assays$RNA@data)
+    }
+    return(rna.bind)
+  }, mc.cores = length(idx)
+)
+rna.bind <- do.call(cbind, rna.bind)
+rna.data[["raw"]] <- CreateAssayObject(rna.bind[, Cells(rna.data)])
+
+
+rna.data$sample <- str_match(Cells(rna.data), "--(.*$)")[, 2]
+meta <- FindSampleByMetadata()
+rownames(meta) <- meta$sampleId
+meta <- meta[rna.data$sample,]
+rownames(meta) <- Cells(rna.data)
+rna.data <- AddMetaData(rna.data, meta)
+
+# Rename cells so they match they match the uploaded dataset
+new_names <- Cells(rna.data)
+as.data.frame(new_names) %>%
+  separate(col = new_names, into = c("Cell", "sample"), sep = "--") %>%
+  separate(col = sample, into = c("subj", "tech", "rep"), sep = "_") %>%
+  mutate(new_name = paste0(Cell, "_", rep, "--", subj)) %>%
+  mutate(new_name = str_remove(string=new_name, pattern = "_NA")) -> new_names
+rna.data <- RenameCells(rna.data, new.names = new_names$new_name, old.names = Cells(rna.data))
+# From AAACCTGAGAGTACAT-1--MantonBM6_HiSeq_5
+# to  AAACCTGCACCACCAG-1_5--MantonBM6
+
+
+# rna.data@assays$RNA@counts <- matrix(0)
+# rna.data@assays$RNA@scale.data <- matrix(0)
+# rna.data@assays$raw@counts <- matrix(0)
+saveRDS(rna.data, "rna_processed.rds", compress = F)
+```
+
+Plot umap
+```{r}
+library(ggplot2)
+
+DimPlot(rna.data, reduction = "umap", group.by = "projectId", label = T, pt.size = 0.5, ncol = 1) +
+  xlim(-20, 40) + ylim(-50, 10) -> p1
+DimPlot(rna.data, reduction = "umap", group.by = "sample", label = T, pt.size = 0.5) +
+  NoLegend() +
+    xlim(-20, 40) + ylim(-50, 10) -> p2
+# cluster
+DimPlot(rna.data, reduction = "umap", group.by = "seurat_clusters", label = T, pt.size = 0.5) +
+        xlim(-20, 40) + ylim(-50, 10) -> p3
+
+DimPlot(rna.data, reduction = "umap", group.by = "projectId", label = T, pt.size = 0.5, ncol = 1)  -> p1
+DimPlot(rna.data, reduction = "umap", group.by = "sample", label = T, pt.size = 0.5) +
+  NoLegend()  -> p2
+# cluster
+DimPlot(rna.data, reduction = "umap", group.by = "seurat_clusters", label = T, pt.size = 0.5)-> p3
+```
+
+# for CELLiD
+```{r}
+
+rna.data.average <- AverageExpression(rna.data)
+# This will generate average expression for each cluster
+rna.data.average <- round(rna.data.average$RNA, 2)
+write.table(rna.data.average, "CELLiD_input.txt", quote = F, col.names = F, row.names = T, sep="\t")
+# Then, you can upload this file to predict cell types
+```
+
+
+```{r}
+
+# After you get the results, you can add the predicted cell type to seurat object as follows:
+predicted.ct = read.csv("spreadsheet.csv")
+rna.data$primary.predict = predicted.ct[as.numeric(rna.data$seurat_clusters),2]
+rna.data$secondary.predict = predicted.ct[as.numeric(rna.data$seurat_clusters),3]
+DimPlot(rna.data, reduction = "umap", group.by = "primary.predict", label = T, pt.size = 0.5) + NoLegend() -> p4
+```
+
+
+
+# add Metadata from age integrated assay
+```{r}
+bm <- readRDS("data/DISCO/bmv2_fixed.rds")
+rna.data <- AddMetaData(rna.data,bm$ct, col.name="ct")
+rna.data <- AddMetaData(rna.data,bm$simplified_ct, col.name="simplified_ct")
+# drop cells that are not in the integrated assay
+# add this before integration
+rna.data <- subset(rna.data, Cells(rna.data) %in% Cells(bm) | rna.dta$ct == "NA")
+```
+
+plot
+```{r}
+DimPlot(rna.data, reduction = "umap", group.by = "ct", label = T, pt.size = 0.5) +
+# legend at the bottom
+    theme(legend.position = "bottom") -> p5
+# simplified_ct
+DimPlot(rna.data, reduction = "umap", group.by = "simplified_ct", label = T, pt.size = 0.5) +
+# legend at the bottom
+    theme(legend.position = "bottom") -> p6
+```
+
+# plot NA
+```{r}
+# add mt and rp
+rna.data[["percent.mt"]] <- PercentageFeatureSet(rna.data, pattern = "^MT-")
+rna.data[["percent.rp"]] <- PercentageFeatureSet(rna.data, pattern = "^RP[S|L]")
+# plot qc metrics grouping by NA value in ct metadta
+VlnPlot(rna.data, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), group.by = "simplified_ct", pt.size = 0) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) -> p7
+
+
+```
+# freq plot
+```{r}
+library(dittoSeq)
+simplified_ct_list <- rna.data@meta.data %>% distinct(simplified_ct, ct)
+simplified_ct_plot_list <- list()
+Idents(rna.data) <- rna.data$simplified_ct
+# plot with for loop
+for (i in seq_along(simplified_ct_list$simplified_ct %>% unique())) {
+        cell_type <- unique(simplified_ct_list$simplified_ct)[i]
+        print(cell_type)
+        ct_list <- simplified_ct_list %>% filter(simplified_ct == cell_type) %>% pull(ct)
+        dittoFreqPlot(rna.data, "ct", sample.by = "sampleId",
+                      group.by = "gender", data.out = TRUE,
+        main = paste0(cell_type, " frequency")) -> freq.data
+        freq.data[[2]] %>%
+                filter(label.count.total.per.facet > 10) %>% # remove facet points with less than 10 cells
+                ggplot(aes(x = grouping, y = percent)) +
+                geom_boxplot() +
+                geom_point() +
+                facet_wrap(~label, scales = "free") +
+                labs(title = paste0(cell_type, " frequency under 45")) -> plot
+
+        assign(paste0(gsub(" ", "_", cell_type), "_plot"), plot)
+        simplified_ct_plot_list <- c(simplified_ct_plot_list, mget(paste0(gsub(" ", "_", cell_type), "_plot")))
+}
+```
+
+# plot pdf
+```{r}
+pdf("plot.pdf", width = 15, height = 10)
+p1
+p2
+p3
+p4
+p5
+p6
+p7
+dev.off()
+```
