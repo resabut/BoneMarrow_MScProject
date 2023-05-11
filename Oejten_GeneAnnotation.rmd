@@ -150,6 +150,9 @@ bm %>%
 lineage_freq_plot
 # save plot to png
 ggsave("results/figures/seurat_clusters_by_sample_frequency.png", lineage_freq_plot, width = 10, height = 10)
+# save to pdf
+ggsave("results/figures/seurat_clusters_by_sample_frequency.pdf", lineage_freq_plot, width = 10, height = 10)
+
 ```
 It is P again with cluster 14 which is an erythroid cluster mapping to the lymphoid lineage.
 
@@ -604,4 +607,41 @@ bm@meta.data %>%
   geom_text(aes(label = age), size = 3, vjust = -0.5) +
   facet_wrap(~sctypeqin, scales = "free") +
   labs(title = "Distribution per cell type")
+```
+
+
+# add annotation from DISCO
+It is better to add the annotation because I know I have raw counts and not normalized counts.
+First we load DISCO
+```{r load disco}
+disco_bm_v2 <- readRDS("data/DISCO/bmv2_fixed.rds")
+```
+Then we add the annotation to the object
+```{r add annotation from DISCO}
+# extract ct and simplified_ct columns
+disco_bm_v2@meta.data %>%
+        filter(project_id == "GSE120221") %>%
+  select(ct, simplified_ct) %>%
+        mutate(cell_id = rownames(.)) %>%
+        separate(cell_id, into = c("cell_id", "sample"), sep = "--")  %>%
+        mutate(cell_id = paste0(sample, "_",cell_id)) -> disco_bm_v2_ct_df
+
+bm@meta.data %>%
+  select(orig.ident) %>%
+          mutate(cell_id = rownames(.)) %>%
+  separate(orig.ident, into = c("sample", "sample_name"), sep = "_") %>%
+            separate(cell_id, into = c("sample_name", "cell_id"), sep = "_") %>%
+  mutate(cell_id = paste0(sample, "_",cell_id)) -> cell_id_sample_df
+
+cell_id_sample_df %>%
+  left_join(disco_bm_v2_ct_df, by = "cell_id") -> full_annotation_df
+# try with coalesce, or change QC values
+# add new cell_id
+# FIX NON-UNIQUE CELL IDS
+
+
+rownames(disco_bm_v2_ct_df) <- disco_bm_v2_ct_df$cell_id
+# add metadata to oejten
+bm <- AddMetaData(object = bm, metadata = disco_bm_v2_ct_df$ct, col.name = "ct")
+bm <- AddMetaData(object = bm, metadata = disco_bm_v2_ct_df$simplified_ct, col.name = "simplified_ct")
 ```
