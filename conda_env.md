@@ -45,6 +45,11 @@ remotes::install_github("phipsonlab/cellxy")
 mamba install r-locfit bioconductor-edger
 remotes::install_github("phipsonlab/speckle")
 
+# FOR FAST INTEGRATION
+mamba install r-rcppgsl r-rcppziggurat r-rfast
+#### or maybe just 
+mamba install r-rcpp
+remotes::install_github("git@github.com:JinmiaoChenLab/FastIntegrate.git")
 ```
 
 
@@ -152,4 +157,34 @@ if (!requireNamespace("remotes", quietly = TRUE)) {
   install.packages("remotes")
 }
 remotes::install_github("mojaveazure/seurat-disk")
+```
+
+
+# r-integration
+## conda
+```bash
+mamba create -n r-integration
+mamba activate r-integration
+mamba install r-base r-essentials
+mamba install r-seurat r-seuratobject r-data.table r-matrix r-tictoc r-dplyr r-pbmcapply r-stringr
+mamba install r-remotes
+# install compilers
+mamba install gcc
+# biocmanager
+mamba install r-biocmanager
+mamba install bioconductor-genomeinfodbdata
+mamba install bioconductor-scdblfinder
+mamba install bioconductor-dittoseq
+mamba install bioconductor-biocstyle bioconductor-cellbench bioconductor-scater
+```
+
+## R
+```r
+remotes::install_github("JinmiaoChenLab/FastIntegrate")
+
+BiocManager::install("BiocParallel")
+
+remotes::install_github("phipsonlab/speckle", build_vignettes = TRUE, 
+dependencies = "Suggest")
+
 ```
