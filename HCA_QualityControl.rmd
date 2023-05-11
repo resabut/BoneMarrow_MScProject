@@ -85,8 +85,13 @@ age_hist_alldata
 # QC metrics
 ## explore QC metrics
 ```{r explore QC metrics}
+# calculate the number of mitochondrial genes
+bm <- PercentageFeatureSet(bm, pattern = "^MT-", col.name = "percent.mt")
+# calculate the number of ribosomal genes
+bm <- PercentageFeatureSet(bm, pattern = "^RPS|^RPL", col.name = "percent.ribo")
+
 # plot QC metrics
-VlnPlot(bm, features = c("nFeature_RNA", "nCount_RNA"),
+VlnPlot(bm, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.ribo"),
         group.by= "project_id",
         ncol = 2) -> qc_metrics_alldata
 qc_metrics_alldata
