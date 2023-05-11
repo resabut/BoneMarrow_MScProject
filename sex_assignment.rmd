@@ -36,6 +36,16 @@ seurat_obj <- AddMetaData(seurat_obj, metadata = sex, col.name = "sex_predicted"
 seurat_obj %>% dittoBarPlot(var = "sex_predicted", group.by = "sample")
 ```
 
+```{r}
+library(ggplot2)
+bar_data <- as.data.frame(table(seurat_obj@meta.data$sex_predicted, seurat_obj@meta.data$sample))
+colnames(bar_data) <- c("Sex", "Sample", "Count")
+ggplot(bar_data, aes(x = Sample, y = Count, fill = Sex)) +
+  geom_col(position = "fill") +
+  labs(x = "Sample", y = "Count", fill = "Sex") +
+  theme_bw()
+```
+
 
 # DISCO bm v2
 ```{r}
@@ -57,7 +67,7 @@ disco_bm_v2 <- AddMetaData(disco_bm_v2, metadata = sexbm, col.name = "sex_predic
 ## plot sex freq
 ```{r}
 disco_bm_v2@meta.data %>%
-  distinct(sample_id, gender, subject_id, project_id, platform) -> gender_indiv
+  distinct(sample_id, gender, subject_id, project_id, platform, age, age_group, cell_sorting, fetal_age_week) -> gender_indiv
 gender_indiv
 
 disco_bm_v2 %>%
