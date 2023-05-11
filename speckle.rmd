@@ -1,0 +1,162 @@
+---
+title: "Using speckel for cell freq analysis"
+output: html_notebook
+---
+
+```{r example on github}
+library(speckle)
+library(limma)
+library(ggplot2)
+
+# Get some example data which has two groups, three cell types and two
+# biological replicates in each group
+cell_info <- speckle_example_data()
+head(cell_info)
+
+# Run propeller testing for cell type proportion differences between the two
+# groups
+propeller(clusters = cell_info$clusters, sample = cell_info$samples,
+group = cell_info$group)
+
+# Plot cell type proportions
+plotCellTypeProps(clusters=cell_info$clusters, sample=cell_info$samples)
+```
+
+For sex effect:
+- clusters: cell types
+- samples: samples
+- group: sex (male or female)
+
+# Vignette example
+Another example
+```{r example on the vignette}
+library(speckle)
+library(limma)
+library(ggplot2)
+library(CellBench)
+
+sc_data <- load_sc_data() # get cellbench dataset
+# bootstrapping because the cellbench dataset doesn't have biological replicates
+# first find genes detected in 3 diff techs, they have originally different number of rows
+commongenes1 <- rownames(sc_data$sc_dropseq)[rownames(sc_data$sc_dropseq) %in% rownames(sc_data$sc_celseq)]
+commongenes2 <- commongenes1[commongenes1 %in% rownames(sc_data$sc_10x)]
+# subset
+sce_10x <- sc_data$sc_10x[commongenes2,]
+sce_celseq <- sc_data$sc_celseq[commongenes2,]
+sce_dropseq <- sc_data$sc_dropseq[commongenes2,]
+
+# check that the first dimension are the sames now
+print("dim of 10x, celseq, dropseq")
+dim(sce_10x)
+dim(sce_celseq)
+dim(sce_dropseq)
+```
+
+```{r bootsrapping}
+i.10x <- seq_len(ncol(sce_10x))
+i.celseq <- seq_len(ncol(sce_celseq))
+i.dropseq <- seq_len(ncol(sce_dropseq))
+
+set.seed(10)
+boot.10x <- sample(i.10x, replace = TRUE)
+boot.celseq <- sample(i.celseq, replace = TRUE)
+boot.dropseq <- sample(i.dropseq, replace = TRUE)
+
+sce_10x_rep2 <- sce_10x[,boot.10x]
+sce_celseq_rep2 <- sce_celseq[,boot.celseq]
+sce_dropseq_rep2 <- sce_dropseq[,boot.dropseq]
+print("done bootstrapping")
+```
+
+```{r combine all SCE objects}
+# create a new object and then retain only the information needed for propeller
+sample <- rep(c("S1","S2", "S3", "S4", "S5", "S6"),
+              times = c(ncol(sce_10x),ncol(sce_10x_rep2),
+                        ncol(sce_celseq),ncol(sce_celseq_rep2),
+                        ncol(sce_dropseq),ncol(sce_dropseq_rep2)))
+cluster <- c(sce_10x$cell_line, sce_10x_rep2$cell_line,
+             sce_celseq$cell_line, sce_celseq_rep2$cell_line,
+             sce_dropseq$cell_line, sce_dropseq_rep2$cell_line)
+group <- rep(c("10x", "celseq", "dropseq"),
+            c(2*ncol(sce_10x), 2*ncol(sce_celseq), 2*ncol(sce_dropseq)))
+allcounts <- cbind(counts(sce_10x), counts(sce_10x_rep2),
+                   counts(sce_celseq), counts(sce_celseq_rep2),
+                   counts(sce_dropseq), counts(sce_dropseq_rep2))
+# combine all the data
+sce_all <- SingleCellExperiment(assays=list(counts=allcounts))
+sce_all$sample <- sample
+sce_all$cluster <- cluster
+sce_all$group <- group
+print("done combining all data")
+```
+
+```{r Visualize data}
+# with scater paclage
+sce_all <- scater::logNormCounts(sce_all)
+sce_all <- scater::runPCA(sce_all)
+sce_all <- scater::runUMAP(sce_all)
+
+pca1 <- scater::plotReducedDim(sce_all, dimred = "PCA", colour_by = "cluster") +
+        ggtitle("Cell line")
+pca2 <- scater::plotReducedDim(sce_all, dimred = "PCA", colour_by = "group") +
+        ggtitle("Technology")
+pca1+pca2
+# umap
+umap1 <- scater::plotReducedDim(sce_all, dimred = "UMAP", colour_by = "cluster") +
+        ggtitle("Cell line")
+umap2 <- scater::plotReducedDim(sce_all, dimred = "UMAP", colour_by = "group") +
+        ggtitle("Technology")
+umap1+umap2
+```
+
+## Propeller
+```{r propeller}
+propeller(clusters = sce_all$cluster, sample = sce_all$sample,
+          group = sce_all$group,
+          transform = "logit" # by default
+) -> propeller_logit
+# with asin
+propeller(clusters = sce_all$cluster, sample = sce_all$sample,
+          group = sce_all$group,
+          transform = "asin"
+) -> propeller_asin
+
+propeller_logit
+propeller_asin
+```
+
+The differences seem signficant for  H1975 for both logit and asin transform. This is probably due to bootsrapping variation in this case.
+We know that the cells were mixed in approximately the same proportions.
+
+
+
+```{r plot cell type proportions}
+plotCellTypeProps(clusters=sce_all$cluster, sample=sce_all$sample)
+```
+
+We can also obtain a table with the cell type proportions for each sample
+```{r table cell type proportions}
+props <- getTransformedProps(clusters=sce_all$cluster, sample=sce_all$sample, transform = "logit")
+barplot(props$Proportions, col = c("orange", "purple", "dark green"), legend=TRUE, ylab="Proportions")
+```
+
+We can plot some stripcharts
+```{r stripcharts}
+par(mfrow=c(1,3))
+for(i in seq(1,3,1)){
+    stripchart(props$Proportions[i,]~rep(c("10x","celseq","dropseq"), each=2),
+           vertical=TRUE, pch=16, method="jitter",
+           col=c("orange", "purple", "dark green"), cex=2, ylab="Proportions")
+    title(rownames(props$Proportions)[i])
+
+}
+```
+
+Explore models that fit the data
+```{r explore models}
+par(mfrow=c(1,1))
+plotCellTypeMeanVar(props$Counts)
+plotCellTypePropsMeanVar(props$Counts)
+```
+
+```{r fit models}
