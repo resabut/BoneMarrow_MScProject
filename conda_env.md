@@ -176,6 +176,7 @@ mamba install bioconductor-genomeinfodbdata
 mamba install bioconductor-scdblfinder
 mamba install bioconductor-dittoseq
 mamba install bioconductor-biocstyle bioconductor-cellbench bioconductor-scater
+mamba install bioconductor-annotationdbi
 ```
 
 ## R
@@ -186,5 +187,7 @@ BiocManager::install("BiocParallel")
 
 remotes::install_github("phipsonlab/speckle", build_vignettes = TRUE, 
 dependencies = "Suggest")
+remotes::install_github("phipsonlab/cellxy")
+
 
 ```
