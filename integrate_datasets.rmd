@@ -3,13 +3,15 @@ title: "Integrate from DISCO chosen projects"
 output: html_notebook
 ---
 ```{r}
-setwd("01_Integration/")
+setwd("/home/inf-38-2022/MScProject/01_Integration/")
 library(Seurat)
 library(pbmcapply)
 library(scDblFinder)
 library(BiocParallel)
 library(stringr)
 library(FastIntegration)
+library(tidyr)
+library(dplyr)
 ```
 ```{r}
 options(bitmapType = "cairo")
@@ -20,6 +22,9 @@ meta <- meta[which(meta$tissue == "bone marrow"),]
 meta <- meta[grep("10", meta$platform),]
 meta <- meta[which(meta$sampleType == "Normal"),]
 meta <- meta[which(meta$projectId %in% c("HCA_HematopoieticImmuneCellAtlas", "GSE120221") ),]
+
+bm <- readRDS("../data/DISCO/bmv2_fixed.rds")
+
 ```
 Download data from DISCO
 ```{r}
@@ -28,15 +33,27 @@ DownloadDiscoData(meta, dir = "./disco")
 ```{r}
 rna.list <- pbmclapply(
   1:nrow(meta), function(i) {
-          # read data
+    # read data
     rna <- readRDS(paste0("disco/", meta$sampleId[i], ".rds"))
           # rename cells
     rna <- RenameCells(rna, new.names = paste0(Cells(rna), "--", meta$sampleId[i]))
-            # add metadata
+    # Rename cells so they match they match the uploaded dataset
+    new_names <- Cells(rna)
+    as.data.frame(new_names) %>%
+        separate(col = new_names, into = c("Cell", "sample"), sep = "--") %>%
+        separate(col = sample, into = c("subj", "tech", "rep"), sep = "_") %>%
+        mutate(new_name = paste0(Cell, "_", rep, "--", subj)) %>%
+        mutate(new_name = str_remove(string=new_name, pattern = "_NA")) -> new_names
+    rna <- RenameCells(rna, new.names = new_names$new_name, old.names = Cells(rna))
     rna@assays$RNA@counts <- sweep(expm1(rna@assays$RNA@data), 2, rna$nCount_RNA, `*`) /10000
     # add metadata, mitochondria and ribosomal percentage
     rna[["percent.mt"]] <- PercentageFeatureSet(rna, pattern = "^MT-")
     rna[["percent.rp"]] <- PercentageFeatureSet(rna, pattern = "^RP[S|L]")
+    # add cell type
+    rna <- AddMetaData(rna,bm$ct, col.name="ct")
+    rna <- AddMetaData(rna,bm$simplified_ct, col.name="simplified_ct")
+    # drop cells that are not in the integrated assay, so no cell type can be inferred
+    rna <- subset(rna, subset= ct != "NA")
     # keep singlets only
     sce <- scDblFinder(as.SingleCellExperiment(rna))
     rna <- subset(rna, cells = Cells(rna)[which(sce@colData@listData[["scDblFinder.class"]] == "singlet")])
@@ -45,7 +62,7 @@ rna.list <- pbmclapply(
     rna <- FindVariableFeatures(rna)
     # return preprocessed object
     return(rna)
-  }, mc.cores = 10
+  }, mc.cores = 40
 )
 
 ```
@@ -149,14 +166,7 @@ meta <- meta[rna.data$sample,]
 rownames(meta) <- Cells(rna.data)
 rna.data <- AddMetaData(rna.data, meta)
 
-# Rename cells so they match they match the uploaded dataset
-new_names <- Cells(rna.data)
-as.data.frame(new_names) %>%
-  separate(col = new_names, into = c("Cell", "sample"), sep = "--") %>%
-  separate(col = sample, into = c("subj", "tech", "rep"), sep = "_") %>%
-  mutate(new_name = paste0(Cell, "_", rep, "--", subj)) %>%
-  mutate(new_name = str_remove(string=new_name, pattern = "_NA")) -> new_names
-rna.data <- RenameCells(rna.data, new.names = new_names$new_name, old.names = Cells(rna.data))
+
 # From AAACCTGAGAGTACAT-1--MantonBM6_HiSeq_5
 # to  AAACCTGCACCACCAG-1_5--MantonBM6
 
@@ -190,33 +200,30 @@ DimPlot(rna.data, reduction = "umap", group.by = "seurat_clusters", label = T, p
 # for CELLiD
 ```{r}
 
-rna.data.average <- AverageExpression(rna.data)
-# This will generate average expression for each cluster
-rna.data.average <- round(rna.data.average$RNA, 2)
-write.table(rna.data.average, "CELLiD_input.txt", quote = F, col.names = F, row.names = T, sep="\t")
-# Then, you can upload this file to predict cell types
+# rna.data.average <- AverageExpression(rna.data)
+# # This will generate average expression for each cluster
+# rna.data.average <- round(rna.data.average$RNA, 2)
+# write.table(rna.data.average, "CELLiD_input.txt", quote = F, col.names = F, row.names = T, sep="\t")
+# # Then, you can upload this file to predict cell types
 ```
 
 
 ```{r}
 
-# After you get the results, you can add the predicted cell type to seurat object as follows:
-predicted.ct = read.csv("spreadsheet.csv")
-rna.data$primary.predict = predicted.ct[as.numeric(rna.data$seurat_clusters),2]
-rna.data$secondary.predict = predicted.ct[as.numeric(rna.data$seurat_clusters),3]
-DimPlot(rna.data, reduction = "umap", group.by = "primary.predict", label = T, pt.size = 0.5) + NoLegend() -> p4
+# # After you get the results, you can add the predicted cell type to seurat object as follows:
+# predicted.ct = read.csv("spreadsheet.csv")
+# rna.data$primary.predict = predicted.ct[as.numeric(rna.data$seurat_clusters),2]
+# rna.data$secondary.predict = predicted.ct[as.numeric(rna.data$seurat_clusters),3]
+# DimPlot(rna.data, reduction = "umap", group.by = "primary.predict", label = T, pt.size = 0.5) + NoLegend() -> p4
 ```
 
 
 
 # add Metadata from age integrated assay
 ```{r}
-bm <- readRDS("data/DISCO/bmv2_fixed.rds")
+bm <- readRDS("../data/DISCO/bmv2_fixed.rds")
 rna.data <- AddMetaData(rna.data,bm$ct, col.name="ct")
 rna.data <- AddMetaData(rna.data,bm$simplified_ct, col.name="simplified_ct")
-# drop cells that are not in the integrated assay
-# add this before integration
-rna.data <- subset(rna.data, Cells(rna.data) %in% Cells(bm) | rna.dta$ct == "NA")
 ```
 
 plot
