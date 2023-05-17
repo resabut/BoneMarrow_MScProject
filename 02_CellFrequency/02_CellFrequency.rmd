@@ -1,0 +1,208 @@
+---
+title: "Cell frequency analysis"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# load
+```{r load libraries}
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(Seurat)
+library(patchwork)
+library(dittoSeq)
+library(speckle)
+setwd("/home/inf-38-2022/MScProject/02_CellFrequency/")
+```
+load data
+```{r load data}
+rna.data <- readRDS("../01_Integration/rna_annotated.rds")
+```
+
+We add simplified cell types
+```{r}
+b_cells <- c("Naive B cell", "Memory B cell", "Plasma cell", "preB cell", "preB cell (cycling)", "proB cell", "proB cell (cycling)", "Plasma cell")
+t_nk_cells <- c("Naive CD8 T cell", "Effector/Memory CD4 T cell", "Naive CD4 T cell",
+                "GZMK+ CD8 T cell", "Gamma-delta T cell", "IFN-activated T cell", "Treg", "GZMB+ CD8 T cell", "MAIT", "T/NK cell (cycling)", "CD16+ NK", "Tissue-resident NK cell", "CD56+ NK", ilc <- "ILC")
+erythrocytes <- c("Early SOX4+ erythroblast", "Late hemoglobin+ erythroblast", "Fetal HBG+ erythrocyte",
+                  "Intermediate EPCAM+ erythroblast", "Erythrocyte")
+monocytes <- c("CD14+MHCIIhigh monocyte", "CD14+MHCIIlow monocyte", "Macrophage", "CD16+ monocyte")
+granulocyte <- c("S100A+ preNeutrophil (cycling)", "S100A+ preNeutrophil", "Metamyelocyte/Band neutrophil",
+                 "Neutrophil", "Promyelocyte", "Myelocyte", "Mast cell")
+dendritic_cells <- c("pre-pDC (lymphoid origin)", "pre-pDC (myeloid origin)", "cDC2", "cDC2 (cycling)", "cDC1", "pDC")
+Mk <- c("Megakaryocyte", "Megakaryocyte progenitor", "Platelet")
+
+progenitor_cells <- c("CLP", "CMP", "GMP", "MEP", "MPP", "CDP", "HSC")
+
+stroma <- c("Fibroblast", "Mesenchymal stromal cell", "Osteoclast")
+```
+# plot cell frequency plots
+```{r plot cell frequency}
+
+
+simplified_ct_list <- rna.data@meta.data %>% distinct(simplified_ct, ct)
+simplified_ct_plot_list <- list()
+Idents(rna.data) <- rna.data$simplified_ct
+# plot with for loop
+for (i in seq_along(simplified_ct_list$simplified_ct %>% unique())) {
+  cell_type <- unique(simplified_ct_list$simplified_ct)[i]
+  print(cell_type)
+  ct_list <- simplified_ct_list %>%
+    filter(simplified_ct == cell_type) %>%
+    pull(ct)
+  dittoFreqPlot(rna.data, "ct", sample.by = "sample", # not sample id
+                group.by = "gender", data.out = TRUE,
+                vars.use = ct_list,
+
+                main = paste0(cell_type, " frequency")) -> freq.data
+  freq.data[[2]] %>%
+    filter(label.count.total.per.facet > 10) %>% # remove facet points with less than 10 cells
+    ggplot(aes(x = grouping, y = percent)) +
+    geom_boxplot() +
+    geom_point() +
+    facet_wrap(~label, scales = "free") +
+    labs(title = paste0(cell_type, " frequency under 45")) -> plot
+
+  assign(paste0(gsub(" ", "_", cell_type), "_plot"), plot)
+  simplified_ct_plot_list <- c(simplified_ct_plot_list, mget(paste0(gsub(" ", "_", cell_type), "_plot")))
+}
+```
+```{r}
+pdf("individual_celltype_distribution.pdf", width = 10, height = 10)
+simplified_ct_plot_list
+dev.off()
+```
+
+# speckle
+```{r speckle}
+propeller(clusters = rna.data$ct, sample = rna.data$sample, group = rna.data$gender) -> prop.out
+prop.out
+propeller(clusters = rna.data$ct, sample = rna.data$sample, group = rna.data$gender,
+          transform = "asin"
+) -> propeller_asin.out
+propeller_asin.out
+```
+make dot plot
+```{r}
+# add log2 ratio
+prop.out$PropRatioLog2 <- log2(prop.out$PropRatio)
+prop.out %>%
+  # filter(P.Value < 0.05) %>%
+  # sort by PropRatioLog2 for ggplot
+  arrange(desc(PropRatioLog2)) %>%
+  mutate(BaselineProp.clusters = factor(BaselineProp.clusters, levels = BaselineProp.clusters)) %>%
+  # make a dot plot with ggplot geom_point
+  ggplot(aes(x = PropRatioLog2, y = BaselineProp.clusters)) +
+  scale_size(trans = "reverse", breaks = c(0.05, 0.1, 0.2, 0.5, 0.75)) +
+
+  geom_point(aes(size = P.Value, color = ifelse(P.Value < 0.1, "red", "blue"))) +
+  theme_bw() +
+  # theme(legend.position = "none") +
+  labs(title = "Cell type distribution") -> dotplot
+dotplot
+# same with propeller_asin.out
+propeller_asin.out$PropRatioLog2 <- log2(propeller_asin.out$PropRatio)
+
+propeller_asin.out %>%
+  # filter(P.Value < 0.05) %>%
+  # sort by PropRatioLog2 for ggplot
+  arrange(desc(PropRatioLog2)) %>%
+  mutate(BaselineProp.clusters = factor(BaselineProp.clusters, levels = BaselineProp.clusters)) %>%
+  # make a dot plot with ggplot geom_point
+  ggplot(aes(x = PropRatioLog2, y = BaselineProp.clusters)) +
+  scale_size(trans = "reverse", breaks = c(0.05, 0.1, 0.2, 0.5, 0.75)) +
+
+  geom_point(aes(size = P.Value, color = ifelse(P.Value < 0.1, "red", "blue"))) +
+  theme_bw() +
+  # theme(legend.position = "none") +
+  labs(title = "Cell type distribution") -> dotplot_asin
+dotplot_asin
+```
+
+Plot freq m vs f
+```{r}
+plot(prop.out$PropMean.M, prop.out$PropMean.F)
+# with ggplot
+prop.out %>%
+  ggplot(aes(x = PropMean.M, y = PropMean.F)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) +
+  # add labels
+  geom_text(aes(label = BaselineProp.clusters), hjust = 0, vjust = 0) +
+  labs(title = "Cell type distribution") -> freq_plot
+freq_plot
+# log2 ratio
+plot(log(prop.out$PropMean.M), log(prop.out$PropMean.F))
+lines(c(0, 0), c(1, 1))
+# with ggplot
+prop.out %>%
+  ggplot(aes(x = log(PropMean.M), y = log(PropMean.F))) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) +
+  # add labels
+  geom_text_repel(aes(label = BaselineProp.clusters), hjust = 0, vjust = 0) +
+  labs(title = "Cell type distribution") -> freq_plot
+freq_plot
+# only show progenitors
+prop.out %>%
+  filter(BaselineProp.clusters %in% progenitor_cells | BaselineProp.clusters %in% dendritic_cells) %>%
+  ggplot(aes(x = log(PropMean.M), y = log(PropMean.F))) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) +
+  # add labels
+  geom_text_repel(aes(label = BaselineProp.clusters), hjust = 0, vjust = 0) +
+  labs(title = "Cell type distribution") -> freq_plot
+freq_plot
+```
+
+# now with simplified_ct
+```{r}
+propeller(clusters = rna.data$simplified_ct, sample = rna.data$sample, group = rna.data$gender) -> sct_prop.out
+sct_prop.out
+sct_prop.out$PropRatioLog2 <- log2(sct_prop.out$PropRatio)
+sct_prop.out %>%
+  # filter(P.Value < 0.05) %>%
+  # sort by PropRatioLog2 for ggplot
+  arrange(desc(PropRatioLog2)) %>%
+  mutate(BaselineProp.clusters = factor(BaselineProp.clusters, levels = BaselineProp.clusters)) %>%
+  # make a dot plot with ggplot geom_point
+  ggplot(aes(x = PropRatioLog2, y = BaselineProp.clusters)) +
+  geom_point(aes(size = P.Value, color = ifelse(P.Value < 0.1, "blue", "red"))) +
+  scale_size(trans = "reverse", breaks = c(0.05, 0.1, 0.2, 0.5, 0.75)) +
+  theme_bw() +
+  # theme(legend.position = "none") +
+  labs(title = "Cell type distribution") -> sct_dotplot
+sct_dotplot
+```
+
+# disco
+```{r}
+bm <- readRDS("../data/DISCO/bmv2_fixed.rds")
+# not NA in gender
+bm <- subset(bm, subset= gender != "NA")
+propeller(clusters =bm$ct, sample = bm$sample, group = bm$gender) -> bm_prop.out
+bm_prop.out
+propeller(clusters = bm$ct, sample = bm$sample, group = bm$gender,
+          transform = "asin"
+) -> bm_propeller_asin.out
+bm_propeller_asin.out
+# add log2 ratio
+bm_prop.out$PropRatioLog2 <- log2(bm_prop.out$PropRatio)
+bm_prop.out %>%
+  # filter(P.Value < 0.05) %>%
+  # sort by PropRatioLog2 for ggplot
+  arrange(desc(PropRatioLog2)) %>%
+  mutate(BaselineProp.clusters = factor(BaselineProp.clusters, levels = BaselineProp.clusters)) %>%
+  # make a dot plot with ggplot geom_point
+  ggplot(aes(x = PropRatioLog2, y = BaselineProp.clusters)) +
+  scale_size(trans = "reverse", breaks = c(0.05, 0.1, 0.2, 0.5, 0.75)) +
+
+  geom_point(aes(size = P.Value, color = ifelse(P.Value < 0.1, "red", "blue"))) +
+  theme_bw() +
+  # theme(legend.position = "none") +
+  labs(title = "Cell type distribution") -> bm_dotplot
+bm_dotplot
+```
