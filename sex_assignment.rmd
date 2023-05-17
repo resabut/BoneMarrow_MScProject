@@ -9,7 +9,10 @@ library(cellXY)
 library(SingleCellExperiment)
 library(org.Hs.eg.db)
 library(Seurat)
-
+library(ggplot2)
+library(dplyr, tidyr)
+library(dittoSeq)
+library(lim4)
 seurat_obj <- readRDS("data/seurat_obj/Oejten_scRNAseq.rds")
 sc_data <- as.SingleCellExperiment(seurat_obj)
 sc_10x <- sc_data$sc_10x
@@ -72,11 +75,13 @@ gender_indiv
 
 disco_bm_v2 %>%
   dittoBarPlot(var = "sex_predicted", group.by = "sample_id", split.by = "project_id", split.adjust = list(scales = "free")) -> sex_prediction_disco_bm_v2
-
+sex_prediction_disco_bm_v2
 ```
 
 
+
+
 # save seurat obj
-```{r}
+```{r, eval = FALSE}
 saveRDS(disco_bm_v2, "data/DISCO/bmv2_fixed.rds", compress = FALSE)
 ```
