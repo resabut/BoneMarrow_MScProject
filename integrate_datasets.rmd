@@ -224,8 +224,12 @@ DimPlot(rna.data, reduction = "umap", group.by = "seurat_clusters", label = T, p
 bm <- readRDS("../data/DISCO/bmv2_fixed.rds")
 rna.data <- AddMetaData(rna.data,bm$ct, col.name="ct")
 rna.data <- AddMetaData(rna.data,bm$simplified_ct, col.name="simplified_ct")
+rna.data <- AddMetaData(rna.data,bm$gender, col.name="gender")
 ```
-
+save the cell type annoted dataset
+```{r}
+saveRDS(rna.data, "rna_annotated.rds", compress = F)
+```
 plot
 ```{r}
 DimPlot(rna.data, reduction = "umap", group.by = "ct", label = T, pt.size = 0.5) +
@@ -259,9 +263,13 @@ for (i in seq_along(simplified_ct_list$simplified_ct %>% unique())) {
         cell_type <- unique(simplified_ct_list$simplified_ct)[i]
         print(cell_type)
         ct_list <- simplified_ct_list %>% filter(simplified_ct == cell_type) %>% pull(ct)
-        dittoFreqPlot(rna.data, "ct", sample.by = "sampleId",
+        dittoFreqPlot(rna.data, "ct", sample.by = "sample", # not sample id
                       group.by = "gender", data.out = TRUE,
-        main = paste0(cell_type, " frequency")) -> freq.data
+                                            vars.use = ct_list,
+
+                      main = paste0(cell_type, " frequency")) -> freq.data
+        print(colnames(freq.data))
+
         freq.data[[2]] %>%
                 filter(label.count.total.per.facet > 10) %>% # remove facet points with less than 10 cells
                 ggplot(aes(x = grouping, y = percent)) +
@@ -281,9 +289,14 @@ pdf("plot.pdf", width = 15, height = 10)
 p1
 p2
 p3
-p4
+# if p4 exists, plot p4
+if(exists("p4")) {
+        p4
+}
 p5
 p6
 p7
 dev.off()
+
 ```
+
