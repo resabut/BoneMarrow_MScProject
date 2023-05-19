@@ -159,4 +159,42 @@ plotCellTypeMeanVar(props$Counts)
 plotCellTypePropsMeanVar(props$Counts)
 ```
 
-```{r fit models}
+# Fitting linear models using the transformed proportions directly
+```{r }
+group <- rep(c("10x", "celseq", "dropseq"), each=2)
+pair <- rep(c(1,2),3)
+data.frame(group, pair)
+```
+
+Set the design matrix.
+In propeller, group information is always first in the design matrix specification, and NO intercept.
+```{r }
+design <- model.matrix(~0+group+pair)
+design
+```
+
+We can run then anova to find differences among 3 groups.
+```{r }
+propeller.anova(prop.list = props, design = design, coef = c(1,2,3), # columns of design matrix correspond to what we are interestedin testing, in this case, the 3 groups.
+                 robust = TRUE, trend=FALSE, sort=TRUE)
+```
+
+
+propeller.ttest would be the other option to find differences between two groups.
+```{r }
+mycontr <- makeContrasts(group10x-groupdropseq, levels=design)
+propeller.ttest(prop.list = props, design, contrasts = mycontr, # 10x vs celseq
+                 robust = TRUE, trend=FALSE, sort=TRUE)
+```
+
+# other options
+## continous variables
+```{r }
+dose <- rep(c(1,2,3), each=2)
+des.dose <- model.matrix(~dose)
+des.dose
+
+fit <- lmFit(props$TransformedProps, des.dose)
+fit <- eBayes(fit, robust=TRUE)
+topTable(fit)
+```
