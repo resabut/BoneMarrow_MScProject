@@ -70,6 +70,109 @@ for (i in seq_along(simplified_ct_list$simplified_ct %>% unique())) {
   simplified_ct_plot_list <- c(simplified_ct_plot_list, mget(paste0(gsub(" ", "_", cell_type), "_plot")))
 }
 ```
+For specific plots:
+```{r}
+# clp
+ dittoFreqPlot(rna.data, "ct", sample.by = "sample", # not sample id
+              group.by = "gender", data.out = TRUE, vars.use = "CLP",
+                main = paste0(cell_type, " frequency")) -> freq.data
+  freq.data[[2]] %>%
+    filter(var.data < 0.008) %>% # removes outlier REMOVE THIS LINE
+    filter(label.count.total.per.facet > 10) %>% # remove facet points with less than 10 cells
+    ggplot(aes(x = grouping, y = percent, fill=grouping)) +
+    geom_violin() +
+    geom_point() +
+
+    facet_wrap(~label, scales = "free") +
+          # change name of x axis
+          xlab("Sex") +
+            # change name of y axis
+            ylab("Frequency overall") +
+
+          theme_bw() +
+          # big text
+            theme(text = element_text(size = 20)) +
+
+    labs(title = "CLP frequency under 45") -> clp_plot
+clp_plot
+```
+```{r}
+#mpp
+ dittoFreqPlot(rna.data, "ct", sample.by = "sample", # not sample id
+              group.by = "gender", data.out = TRUE, vars.use = "MPP",
+                main = paste0(cell_type, " frequency")) -> freq.data
+  freq.data[[2]] %>%
+    filter(label.count.total.per.facet > 10) %>% # remove facet points with less than 10 cells
+    ggplot(aes(x = grouping, y = percent, fill=grouping)) +
+    geom_violin() +
+    geom_point() +
+
+    facet_wrap(~label, scales = "free") +
+          # change name of x axis
+          xlab("Sex") +
+            # change name of y axis
+            ylab("Frequency overall") +
+
+          theme_bw() +
+          # big text
+            theme(text = element_text(size = 20)) +
+
+    labs(title = "CLP frequency under 45") -> mpp_plot
+mpp_plot
+```
+
+
+```{r}
+#gmp
+ dittoFreqPlot(rna.data, "ct", sample.by = "sample", # not sample id
+              group.by = "gender", data.out = TRUE, vars.use = "GMP",
+                main = paste0(cell_type, " frequency")) -> freq.data
+  freq.data[[2]] %>%
+    filter(label.count.total.per.facet > 10) %>% # remove facet points with less than 10 cells
+    ggplot(aes(x = grouping, y = percent, fill=grouping)) +
+    geom_violin() +
+    geom_point() +
+
+    facet_wrap(~label, scales = "free") +
+          # change name of x axis
+          xlab("Sex") +
+            # change name of y axis
+            ylab("Frequency overall") +
+
+          theme_bw() +
+          # big text
+            theme(text = element_text(size = 20)) +
+
+    labs(title = "CLP frequency under 45") -> gmp_plot
+gmp_plot
+
+```
+```{r}
+#cmp
+ dittoFreqPlot(rna.data, "ct", sample.by = "sample", # not sample id
+              group.by = "gender", data.out = TRUE, vars.use = "CMP",
+                main = paste0(cell_type, " frequency")) -> freq.data
+  freq.data[[2]] %>%
+    filter(label.count.total.per.facet > 10) %>% # remove facet points with less than 10 cells
+    ggplot(aes(x = grouping, y = percent, fill=grouping)) +
+    geom_violin() +
+    geom_point() +
+
+    facet_wrap(~label, scales = "free") +
+          # change name of x axis
+          xlab("Sex") +
+            # change name of y axis
+            ylab("Frequency overall") +
+
+          theme_bw() +
+          # big text
+            theme(text = element_text(size = 20)) +
+
+    labs(title = "CLP frequency under 45") -> cmp_plot
+cmp_plot
+
+```
+
 ```{r}
 pdf("individual_celltype_distribution.pdf", width = 10, height = 10)
 simplified_ct_plot_list
@@ -116,7 +219,10 @@ propeller_asin.out %>%
   scale_size(trans = "reverse", breaks = c(0.05, 0.1, 0.2, 0.5, 0.75)) +
 
 geom_point(aes(size = P.Value, color = I(ifelse(P.Value < 0.05, "green",
-                                                ifelse(P.Value < 0.1, "yellow", "red"))))) +  theme_bw() +
+                                                ifelse(P.Value < 0.1, "yellow", rgb(1,0,0,0.25)))))) +
+
+  theme_bw() +
+
   # theme(legend.position = "none") +
   labs(title = "Cell type distribution") -> dotplot_asin
 dotplot_asin
