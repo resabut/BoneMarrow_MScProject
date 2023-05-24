@@ -177,6 +177,7 @@ mamba install bioconductor-scdblfinder
 mamba install bioconductor-dittoseq
 mamba install bioconductor-biocstyle bioconductor-cellbench bioconductor-scater
 mamba install bioconductor-annotationdbi
+mamba install bioconductor-slingshot
 ```
 
 ## R
