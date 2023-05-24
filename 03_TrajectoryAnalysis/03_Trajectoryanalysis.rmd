@@ -16,6 +16,7 @@ library(slingshot)
 library(dplyr)
 library(ggplot2)
 library(Seurat)
+library(SingleCellExperiment)
 # set working directory
 setwd("/home/inf-38-2022/MScProject/")
 set.seed(1234)
@@ -29,18 +30,21 @@ data <- readRDS("01_Integration/rna_annotated.rds")
 
 
 # slingshot
-Save the data for input in slingshot
+Convert to SCE object and import into slingshot
 ```{r}
-# Save the objects as separate matrices for input in slingshot
-dimred <- data@reductions$umap@cell.embeddings
-clustering <- data$ct # by cell type
-counts <- as.matrix(data@assays$RNA@counts[data@assays$RNA@var.features, ])
+# set ct as ident
+Idents(data) <- data[["ct"]]
+sce <- as.SingleCellExperiment(data)
+sce <- slingshot(sce, clusterLabels = ident, reducedDim = "PCA",
+                      allow.breaks = FALSE)
 ```
 
 Define cell lineages
 ```{r}
-lineages <- getLineages(dimred, clustering)
-lineages
+# get the lineages:
+lnes <- getLineages(reducedDim(sce2,"PCA"),
+                    sce2$ident, start.clus = "2")
+lnes@lineages
 ```
 ```{r}
 par(mfrow = c(1, 2))
