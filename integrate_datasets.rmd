@@ -46,6 +46,10 @@ rna.list <- pbmclapply(
         mutate(new_name = str_remove(string=new_name, pattern = "_NA")) -> new_names
     rna <- RenameCells(rna, new.names = new_names$new_name, old.names = Cells(rna))
     rna@assays$RNA@counts <- sweep(expm1(rna@assays$RNA@data), 2, rna$nCount_RNA, `*`) /10000
+
+    # keep singlets only
+    sce <- scDblFinder(as.SingleCellExperiment(rna))
+    rna <- subset(rna, cells = Cells(rna)[which(sce@colData@listData[["scDblFinder.class"]] == "singlet")])
     # add metadata, mitochondria and ribosomal percentage
     rna[["percent.mt"]] <- PercentageFeatureSet(rna, pattern = "^MT-")
     rna[["percent.rp"]] <- PercentageFeatureSet(rna, pattern = "^RP[S|L]")
@@ -54,9 +58,9 @@ rna.list <- pbmclapply(
     rna <- AddMetaData(rna,bm$simplified_ct, col.name="simplified_ct")
     # drop cells that are not in the integrated assay, so no cell type can be inferred
     rna <- subset(rna, subset= ct != "NA")
-    # keep singlets only
-    sce <- scDblFinder(as.SingleCellExperiment(rna))
-    rna <- subset(rna, cells = Cells(rna)[which(sce@colData@listData[["scDblFinder.class"]] == "singlet")])
+    # filter cell type
+    rna <- subset(rna, subset= simplified_ct %in% c("Progenitor cells"))
+
     # pre-process
     rna <- NormalizeData(rna)
     rna <- FindVariableFeatures(rna)
@@ -174,7 +178,7 @@ rna.data <- AddMetaData(rna.data, meta)
 # rna.data@assays$RNA@counts <- matrix(0)
 # rna.data@assays$RNA@scale.data <- matrix(0)
 # rna.data@assays$raw@counts <- matrix(0)
-saveRDS(rna.data, "rna_processed.rds", compress = F)
+saveRDS(rna.data, "rna_processed_progenitors.rds", compress = F)
 ```
 
 Plot umap
@@ -228,7 +232,7 @@ rna.data <- AddMetaData(rna.data,bm$gender, col.name="gender")
 ```
 save the cell type annoted dataset
 ```{r}
-saveRDS(rna.data, "rna_annotated.rds", compress = F)
+saveRDS(rna.data, "rna_annotated_progenitors.rds", compress = F)
 ```
 plot
 ```{r}
