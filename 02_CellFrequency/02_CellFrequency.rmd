@@ -318,3 +318,51 @@ bm_prop.out %>%
   labs(title = "Cell type distribution") -> bm_dotplot
 bm_dotplot
 ```
+
+
+# issues
+
+when taking only the progenitors from the start, too few cells are left for the analysis. This creates issues during the scaling function.
+Maybe we should focus on other datasets.
+```{r}
+rna.data@meta.data %>%
+filter(simplified_ct == "Progenitor cells") %>%
+group_by(sample, projectId) %>%
+count() -> counts
+counts
+# change NA in projectId to HCA
+counts$projectId[is.na(counts$projectId)] <- "HCA"
+dittoBarPlot(subset(rna.data, subset = simplified_ct == "Progenitor cells"), var="ct", group.by="sample")
+dittoBarPlot(subset(rna.data, subset = simplified_ct == "Progenitor cells"), var="ct", group.by="sample", scale = "count")
+# stacked counts
+counts %>%
+  ggplot(aes(x = sample, y = n)) +
+  geom_col() +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  # facet by projectId
+    facet_wrap(~projectId, scales="free") +
+
+  labs(title = "Progenitor cells counts") -> progenitor_counts
+progenitor_counts
+```
+
+Idem but for disco
+```{r}
+# with bm
+bm@meta.data %>%
+  filter(simplified_ct == "Progenitor cells") %>%
+  group_by(sample, cell_sorting) %>%
+  count() -> bm_counts
+bm_counts
+bm_counts %>%
+  ggplot(aes(x = sample, y = n)) +
+  geom_col() +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  # add text with cell sorting
+    geom_text(aes(label = cell_sorting), hjust = 0, vjust = 0) +
+  labs(title = "Progenitor cells counts") -> bm_progenitor_counts
+bm_progenitor_counts
+dittoBarPlot(subset(bm, subset = simplified_ct == "Progenitor cells"), var="ct", group.by="sample")
+```
