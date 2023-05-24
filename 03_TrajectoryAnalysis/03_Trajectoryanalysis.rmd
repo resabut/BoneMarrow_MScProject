@@ -1,0 +1,53 @@
+---
+title: "Trajectory analysis"
+output: html_notebook
+---
+
+This applies slingshot analysis to the data
+Following
+https://nbisweden.github.io/workshop-archive/workshop-scRNAseq/2020-01-27/labs/compiled/slingshot/slingshot.html#basic_processing_with_seurat_pipeline
+
+# Load
+
+load the libraries
+
+```{r}
+library(slingshot)
+library(dplyr)
+library(ggplot2)
+library(Seurat)
+# set working directory
+setwd("/home/inf-38-2022/MScProject/")
+set.seed(1234)
+# set color palette
+pal <- c(RColorBrewer::brewer.pal(9, "Set1"), RColorBrewer::brewer.pal(8, "Set2"))
+```
+load data
+```{r}
+data <- readRDS("01_Integration/rna_annotated.rds")
+```
+
+
+# slingshot
+Save the data for input in slingshot
+```{r}
+# Save the objects as separate matrices for input in slingshot
+dimred <- data@reductions$umap@cell.embeddings
+clustering <- data$ct # by cell type
+counts <- as.matrix(data@assays$RNA@counts[data@assays$RNA@var.features, ])
+```
+
+Define cell lineages
+```{r}
+lineages <- getLineages(dimred, clustering)
+lineages
+```
+```{r}
+par(mfrow = c(1, 2))
+plot(dimred[, 1:2], col = pal[clustering], cex = 0.5, pch = 16)
+for (i in levels(clustering)) {
+    text(mean(dimred[clustering == i, 1]), mean(dimred[clustering == i, 2]), labels = i, font = 2)
+}
+plot(dimred[, 1:2], col = pal[clustering], cex = 0.5, pch = 16)
+lines(lineages, lwd = 3, col = "black")
+```
