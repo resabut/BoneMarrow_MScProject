@@ -58,8 +58,8 @@ rna.list <- pbmclapply(
     rna <- AddMetaData(rna,bm$simplified_ct, col.name="simplified_ct")
     # drop cells that are not in the integrated assay, so no cell type can be inferred
     rna <- subset(rna, subset= ct != "NA")
-    # filter cell type
-    rna <- subset(rna, subset= simplified_ct %in% c("Progenitor cells"))
+    # filter cell type -- only immature cells
+    rna <- subset(rna, subset= simplified_ct %in% c("Progenitor cells", "Monocytes", "B cells", "Dendritic cells","Erythrocytes", "Granulocytes"))
 
     # pre-process
     rna <- NormalizeData(rna)
@@ -178,7 +178,7 @@ rna.data <- AddMetaData(rna.data, meta)
 # rna.data@assays$RNA@counts <- matrix(0)
 # rna.data@assays$RNA@scale.data <- matrix(0)
 # rna.data@assays$raw@counts <- matrix(0)
-saveRDS(rna.data, "rna_processed_progenitors.rds", compress = F)
+saveRDS(rna.data, "rna_processed_immature.rds", compress = F)
 ```
 
 Plot umap
@@ -232,7 +232,7 @@ rna.data <- AddMetaData(rna.data,bm$gender, col.name="gender")
 ```
 save the cell type annoted dataset
 ```{r}
-saveRDS(rna.data, "rna_annotated_progenitors.rds", compress = F)
+saveRDS(rna.data, "rna_annotated_immature.rds", compress = F)
 ```
 plot
 ```{r}
