@@ -10,33 +10,45 @@ library(SingleCellExperiment)
 library(org.Hs.eg.db)
 library(Seurat)
 library(ggplot2)
-library(dplyr, tidyr)
+library(dplyr)
+library(tidyr)
 library(dittoSeq)
-library(lim4)
+# library(lim4)
 seurat_obj <- readRDS("data/seurat_obj/Oejten_scRNAseq.rds")
 sc_data <- as.SingleCellExperiment(seurat_obj)
-sc_10x <- sc_data$sc_10x
-
 counts <- counts(sc_data)
-# ann <- select(org.Hs.eg.db, keys=rownames(sc_data),
-#               columns=c("ENSEMBL","SYMBOL"), keytype="ENSEMBL")
-# m <- match(rownames(counts), ann$ENSEMBL)
-# rownames(counts) <- ann$SYMBOL[m]
-
-sex <- classifySex(counts, genome="Hs")
-
-table(sex$prediction)
-boxplot(counts["XIST",]~sex$prediction)
 ```
+
+Find doublets
+```{r}
+db_pred <- findMfDoublet(x = counts, genome = "Hs")
+db_pred$sex <- sc_data$sex
+print(table(db_pred$prediction, db_pred$sex))
+```
+
+
+Assign sex
+
+```{r}
+# this is useful if they come in a different format
+# ann <- select(org.Hs.eg.db, keys=rownames(sc_data),
+#               columns=c("GENENAME", "SYMBOL"), keytype="SYMBOL")
+# m <- match(rownames(counts), ann$GENENAME)
+# rownames(counts) <- ann$SYMBOL[m]
+sex <- classifySex(counts, genome="Hs")
+table(sex$prediction)
+boxplot(counts["XIST",]~sex$prediction, ylim=c(0, 5))
+```
+
 
 
 # add metadata
 ```{r}
-seurat_obj <- AddMetaData(seurat_obj, metadata = sex, col.name = "sex_predicted")
+seurat_obj <- AddMetaData(seurat_obj, metadata = sex, col.name = "cell_sex_predicted")
 ```
 ## plot sex freq
 ```{r}
-seurat_obj %>% dittoBarPlot(var = "sex_predicted", group.by = "sample")
+seurat_obj %>% dittoBarPlot(var = "cell_sex_predicted", group.by = "sample")
 ```
 
 ```{r}
@@ -65,7 +77,7 @@ boxplot(counts["XIST",]~sexbm$prediction)
 
 # add metadata
 ```{r}
-disco_bm_v2 <- AddMetaData(disco_bm_v2, metadata = sexbm, col.name = "sex_predicted")
+disco_bm_v2 <- AddMetaData(disco_bm_v2, metadata = sexbm, col.name = "cell_sex_predicted")
 ```
 ## plot sex freq
 ```{r}
@@ -78,9 +90,28 @@ disco_bm_v2 %>%
 sex_prediction_disco_bm_v2
 ```
 
+# assign sex to individuals
+```{r}
+# data <- AddMetaData(data, metadata = data@meta.data$gender, col.name = "sex" )
+data@meta.data %>%
+group_by (sample, cell_sex_predicted, sex, project_id) %>%
+count() %>%
+  group_by(sample) %>%
+mutate(freq = n/sum(n)) %>%
+  pivot_wider(names_from=cell_sex_predicted, values_from=c(n,freq))%>%
+  # if Female > 80%, female
+mutate(sample_sex = ifelse(freq_Female >= 0.70 | freq_Female/freq_Male >= 2, "F",
+                           ifelse(freq_Male >= 0.70 | freq_Male/freq_Female >= 2, "M",
+                                  "incluncusive"))) -> sex_assi
+sex_assi
+```
 
-
-
+Check results
+```{r}
+sex_assi %>%
+mutate(match = ifelse(sex == sample_sex, "match", "no_match")) -> sex_assi
+sex_assi
+```
 # save seurat obj
 ```{r, eval = FALSE}
 saveRDS(disco_bm_v2, "data/DISCO/bmv2_fixed.rds", compress = FALSE)
