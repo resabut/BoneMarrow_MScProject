@@ -10,7 +10,8 @@ library(dplyr)
 library(tidyr)
 library(dittoSeq)
 
-SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample", report = FALSE){
+SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample", report = FALSE,
+                      min.percent = 0.7, min.ratio = 2){
   sex_sample_data <- NULL
   freq_plot <- NULL
   print("Checking file format...")
@@ -57,8 +58,8 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
     group_by(sample) %>%
     mutate(prop = n/sum(n)) %>%
     pivot_wider(names_from = Pred_cell_sex, values_from = c(n, prop)) %>%
-    mutate(sample_sex = ifelse(prop_Female >= 0.70 | prop_Female/prop_Male >= 2, "F",
-                            ifelse(prop_Male >= 0.70 | prop_Male/prop_Female >= 2, "M",
+    mutate(sample_sex = ifelse(prop_Female >= min.percent | prop_Female/prop_Male >= min.ratio, "F",
+                            ifelse(prop_Male >= min.percent | prop_Male/prop_Female >= min.ratio, "M",
                                   "inconclusive"))) %>%
     mutate(match = ifelse(sex == sample_sex,
                           "match", "mismatch")) -> sex_assigned_df
@@ -84,6 +85,7 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
         geom_text(aes(label = paste0(round(Count, 2), "%")), position = position_fill(vjust = 0.5)) +
       labs(x = "Sample", y = "Count", fill = "Sex") +
       theme_bw()
+
   }
     print(paste("Done! Returning object in", orig.format, "format..."))
 
