@@ -11,7 +11,8 @@ library(tidyr)
 library(dittoSeq)
 
 SexAssign <- function(data, sex_col = "sex", genome = "Hs", sample_col = "sample"){
-  # Check if it is Seurat object
+  print("Checking file format...")
+  # Check file format
   if (class(data) == "Seurat"){
       orig.format <- "Seurat"
       data.seu <- data
@@ -27,7 +28,9 @@ SexAssign <- function(data, sex_col = "sex", genome = "Hs", sample_col = "sample
     else{
       stop("Input data must be Seurat or SingleCellExperiment object")
     }
+  print(paste("Succesfully read input data. Input:", orig.format))
   # Get counts
+  print("Computing counts...")
   data.counts <- counts(data.sce)
   # correct gene names if necessary
   # ann <- select(org.Hs.eg.db, keys=rownames(sc_data),
@@ -35,7 +38,9 @@ SexAssign <- function(data, sex_col = "sex", genome = "Hs", sample_col = "sample
   # m <- match(rownames(data.counts), ann$GENENAME)
   # rownames(data.counts) <- ann$SYMBOL[m]
   # classify sex of cells using cellXY
+  print("Identifying sex of cells with cellXY...")
   sex_pred <- classifySex(data.counts, genome = genome)
+  print("Adding metadata...")
   # add metadata to Seurat object
   data.seu <- AddMetaData(data.seu, metadata = sex_pred, col.name = "Pred_cell_sex")
   # compute sample sex
@@ -44,9 +49,9 @@ SexAssign <- function(data, sex_col = "sex", genome = "Hs", sample_col = "sample
     count() %>%
     group_by({{sample_col}}) %>%
     mutate(prop = n/sum(n)) %>%
-    pivot_wider(names_from = Pred_cell_sex, values_from = c(n, freq)) %>%
-    mutate(sample_sex = ifelse(freq_Female >= 0.70 | freq_Female/freq_Male >= 2, "F",
-                           ifelse(freq_Male >= 0.70 | freq_Male/freq_Female >= 2, "M",
+    pivot_wider(names_from = Pred_cell_sex, values_from = c(n, prop)) %>%
+    mutate(sample_sex = ifelse(prop_Female >= 0.70 | prop_Female/prop_Male >= 2, "F",
+                           ifelse(prop_Male >= 0.70 | prop_Male/prop_Female >= 2, "M",
                                   "inconclusive"))) %>%
     mutate(match = ifelse({{sex_col}} == sample_sex,
                           "match", "mismatch")) -> sex_assigned_df
@@ -54,6 +59,7 @@ SexAssign <- function(data, sex_col = "sex", genome = "Hs", sample_col = "sample
   data.seu[[sample_col]] %>%
     left_join(sex_assigned_df, by = structure(names=sample_col, .Data=sample_col)) -> sex_assigned_metadata
   data.seu <- AddMetaData(data.seu, metadata = sex_assi_metadata$sample_sex, col.name = "Predicted_sex")
+  print(paste("Done! Returning object in", orig.format, "format..."))
 # return object in original format
   if (orig.format == "Seurat"){
     return(data.seu)
