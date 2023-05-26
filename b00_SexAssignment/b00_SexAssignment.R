@@ -73,12 +73,15 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
     print("Generating report...")
     sex_sample_data <- sex_assigned_df
     # make frequency plot
-    bar_data <- as.data.frame(table(unlist(data.seu[["Pred_cell_sex"]]), unlist(data.seu[[sample_col]])))
+    bar_data <- as.data.frame(table(unlist(data.seu[["Pred_cell_sex"]]),
+                                    unlist(data.seu[[sample_col]])))
     colnames(bar_data) <- c("Sex", "Sample", "Count")
     freq_plot <- ggplot(bar_data, aes(x = Sample, y = Count, fill = Sex)) +
       geom_col(position = "fill") +
-      # set palette
+      # set colors
       scale_fill_manual(values = c("purple", "yellow", "gray")) +
+      # add table with sex assignment
+        geom_text(aes(label = paste0(round(Count, 2), "%")), position = position_fill(vjust = 0.5)) +
       labs(x = "Sample", y = "Count", fill = "Sex") +
       theme_bw()
   }
