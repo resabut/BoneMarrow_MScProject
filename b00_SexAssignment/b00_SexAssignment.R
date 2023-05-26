@@ -10,7 +10,7 @@ library(dplyr)
 library(tidyr)
 library(dittoSeq)
 
-SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample", report = FALSE,
+SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample", report = FALSE, label_plot = TRUE,
                       min.percent = 0.7, min.ratio = 2){
   sex_sample_data <- NULL
   freq_plot <- NULL
@@ -82,9 +82,11 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
       # set colors
       scale_fill_manual(values = c("purple", "yellow", "gray")) +
       # add table with sex assignment
-      geom_text(aes(label = paste0(round(Count, 2), "%")), position = position_fill(vjust = 0.5)) +
       labs(x = "Sample", y = "Count", fill = "Cell sex") +
       theme_bw()
+    if (label_plot){
+        freq_plot <- freq_plot + geom_text(aes(label = round(Count, 2)), position = position_fill(vjust = 0.5))
+        }
 
   }
     print(paste("Done! Returning object in", orig.format, "format..."))
