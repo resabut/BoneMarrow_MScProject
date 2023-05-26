@@ -43,22 +43,28 @@ SexAssign <- function(data, sex_col = "sex", genome = "Hs", sample_col = "sample
   print("Adding metadata...")
   # add metadata to Seurat object
   data.seu <- AddMetaData(data.seu, metadata = sex_pred, col.name = "Pred_cell_sex")
+  # change column names
+  data.seu@meta.data -> metadata
+  metadata[["sample"]] <- metadata[[sample_col]]
+  metadata[["sex"]] <- metadata[[sex_col]]
   # compute sample sex
-  data.seu@meta.data %>%
-    group_by({{sample_col}}, Pred_cell_sex, sex) %>%
+  metadata %>%
+    group_by(sample, Pred_cell_sex, sex) %>%
     count() %>%
-    group_by({{sample_col}}) %>%
+    group_by(sample) %>%
     mutate(prop = n/sum(n)) %>%
     pivot_wider(names_from = Pred_cell_sex, values_from = c(n, prop)) %>%
     mutate(sample_sex = ifelse(prop_Female >= 0.70 | prop_Female/prop_Male >= 2, "F",
-                           ifelse(prop_Male >= 0.70 | prop_Male/prop_Female >= 2, "M",
+                            ifelse(prop_Male >= 0.70 | prop_Male/prop_Female >= 2, "M",
                                   "inconclusive"))) %>%
-    mutate(match = ifelse({{sex_col}} == sample_sex,
+    mutate(match = ifelse(sex == sample_sex,
                           "match", "mismatch")) -> sex_assigned_df
   # add metadata to Seurat object
-  data.seu[[sample_col]] %>%
-    left_join(sex_assigned_df, by = structure(names=sample_col, .Data=sample_col)) -> sex_assigned_metadata
-  data.seu <- AddMetaData(data.seu, metadata = sex_assi_metadata$sample_sex, col.name = "Predicted_sex")
+  metadata %>%
+    left_join(sex_assigned_df, by = c("sample" = "sample")) -> sex_assigned_metadata
+  # add rownames lost during join
+  rownames(sex_assigned_metadata) <- rownames(metadata)
+  data.seu <- AddMetaData(data.seu, metadata = sex_assigned_metadata$sample_sex, col.name = "Predicted_sex")
   print(paste("Done! Returning object in", orig.format, "format..."))
 # return object in original format
   if (orig.format == "Seurat"){
