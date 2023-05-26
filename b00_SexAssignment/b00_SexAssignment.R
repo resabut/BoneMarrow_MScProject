@@ -10,7 +10,9 @@ library(dplyr)
 library(tidyr)
 library(dittoSeq)
 
-SexAssign <- function(data, sex_col = "sex", genome = "Hs", sample_col = "sample"){
+SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample", report = FALSE){
+  sex_sample_data <- NULL
+  freq_plot <- NULL
   print("Checking file format...")
   # Check file format
   if (class(data) == "Seurat"){
@@ -32,6 +34,7 @@ SexAssign <- function(data, sex_col = "sex", genome = "Hs", sample_col = "sample
   # Get counts
   print("Computing counts...")
   data.counts <- counts(data.sce)
+  rm(data.sce)
   # correct gene names if necessary
   # ann <- select(org.Hs.eg.db, keys=rownames(sc_data),
   #               columns=c("GENENAME", "SYMBOL"), keytype="SYMBOL")
@@ -65,14 +68,29 @@ SexAssign <- function(data, sex_col = "sex", genome = "Hs", sample_col = "sample
   # add rownames lost during join
   rownames(sex_assigned_metadata) <- rownames(metadata)
   data.seu <- AddMetaData(data.seu, metadata = sex_assigned_metadata$sample_sex, col.name = "Predicted_sex")
-  print(paste("Done! Returning object in", orig.format, "format..."))
-# return object in original format
+  # generate report
+  if (report){
+    print("Generating report...")
+    sex_sample_data <- sex_assigned_df
+    # make frequency plot
+    bar_data <- as.data.frame(table(unlist(data.seu[["Pred_cell_sex"]]), unlist(data.seu[[sample_col]])))
+    colnames(bar_data) <- c("Sex", "Sample", "Count")
+    freq_plot <- ggplot(bar_data, aes(x = Sample, y = Count, fill = Sex)) +
+      geom_col(position = "fill") +
+      # set palette
+      scale_fill_manual(values = c("purple", "yellow", "gray")) +
+      labs(x = "Sample", y = "Count", fill = "Sex") +
+      theme_bw()
+  }
+    print(paste("Done! Returning object in", orig.format, "format..."))
+
+  # return object in original format
   if (orig.format == "Seurat"){
-    return(data.seu)
+    return(list(data.seu, sex_sample_data, freq_plot))
   }
   else if (orig.format == "SingleCellExperiment"){
     # convert to SingleCellExperiment
-    return(as.SingleCellExperiment(data.seu))
+    return(list(as.SingleCellExperiment(data.seu), sex_sample_data, freq_plot))
   }
 }
 
