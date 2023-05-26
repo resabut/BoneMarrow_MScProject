@@ -52,7 +52,7 @@ SexAssign <- function(data, sex_col = "sex", genome = "Hs", sample_col = "sample
                           "match", "mismatch")) -> sex_assigned_df
   # add metadata to Seurat object
   data.seu[[sample_col]] %>%
-    left_join(sex_assigned_df, by = c({{sample_col}} = {{sample_col}})) -> sex_assigned_metadata
+    left_join(sex_assigned_df, by = structure(names=sample_col, .Data=sample_col)) -> sex_assigned_metadata
   data.seu <- AddMetaData(data.seu, metadata = sex_assi_metadata$sample_sex, col.name = "Predicted_sex")
 # return object in original format
   if (orig.format == "Seurat"){
