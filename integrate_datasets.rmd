@@ -68,13 +68,17 @@ rna.list <- pbmclapply(
       print(paste0("Skipping ", meta$sampleId[i], " because there are only ", ncol(rna), " cell(s) left (>100 required)"))
       return(NULL)
     }
-    # filter cell type -- only progenitor cells
-    rna <- subset(rna, subset= simplified_ct == "Progenitor cells")
-    # skip sample if there are very few cells left
-    if (ncol(rna) < 100) {
-      print(paste0("Skipping ", meta$sampleId[i], " because there are only ", ncol(rna), " cell(s) left (>100 required)"))
+    # filter cell type -- only progenitor cells, if there are no progenitor cells, skip the sample
+    if (length(which(rna$simplified_ct == "Progenitor cells")) < 100) {
+      print(paste0("Skipping ", meta$sampleId[i], " because there are not enough progenitor cells (>100 required)"))
       return(NULL)
+    } else { # at least 100 progenitor cells
+      # subset progenitor cells
+      print(paste0("Keeping ", meta$sampleId[i], " progenitor cells"))
+      rna <- subset(rna, subset= simplified_ct == "Progenitor cells")
     }
+    # skip sample if there are very few cells left
+
     # pre-process
     DefaultAssay(rna) <- "RNA"
     rna <- NormalizeData(rna)
@@ -83,8 +87,13 @@ rna.list <- pbmclapply(
     return(rna)
   }, mc.cores = 40
 )
-skipped_samples
+# remove NULL elements
+rna.list <- rna.list[!sapply(rna.list, is.null)]
+print(paste("There are", length(rna.list), "samples left"))
+# print table with number of cells per sample
+print(table(unlist(lapply(rna.list, ncol))))
 ```
+
 
 
 Here they force at least 100 cells per sample and make sure that all the sample matrices have the same number of features.
@@ -92,7 +101,7 @@ I lower it to 100 per samples because of the progenitors.
 
 ```{r}
 # at least 100 cells per sample
-rna.list <- rna.list[which(unlist(lapply(rna.list, ncol)) > 100)]
+rna.list <- rna.list[which(unlist(lapply(rna.list, ncol)) >= 100)]
 # 33538 features in total
 rna.list <- rna.list[which(unlist(lapply(rna.list, nrow)) == 33538)]
 ```
