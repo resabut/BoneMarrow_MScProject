@@ -19,7 +19,7 @@ setwd("/home/inf-38-2022/MScProject/02_CellFrequency/")
 ```
 load data
 ```{r load data}
-rna.data <- readRDS("../01_Integration/rna_annotated.rds")
+rna.data <- readRDS("../01_Integration/rna_annotated_immature.rds")
 ```
 
 We add simplified cell types
