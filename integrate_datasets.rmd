@@ -21,9 +21,12 @@ meta <- FindSampleByMetadata()
 meta <- meta[which(meta$tissue == "bone marrow"),]
 meta <- meta[grep("10", meta$platform),]
 meta <- meta[which(meta$sampleType == "Normal"),]
-meta <- meta[which(meta$projectId %in% c("HCA_HematopoieticImmuneCellAtlas", "GSE120221") ),]
+meta <- meta[which(meta$projectId %!in% c("E-MTAB-9389", "GSE166895") ),] # contain fetal samples
 
-bm <- readRDS("../data/DISCO/bmv2_fixed.rds")
+bm <- readRDS("../data/DISCO/full_DISCO_age_v2.rds")
+bm@meta.data %>% distinct(sample) -> annotated_samples
+# drop not annotated samples
+meta <- meta[which(meta$sampleId %in% annotated_samples$sample),]
 
 ```
 Download data from DISCO
@@ -31,8 +34,11 @@ Download data from DISCO
 DownloadDiscoData(meta, dir = "./disco")
 ```
 ```{r}
+print("Reading data")
+skipped_samples <- list()
 rna.list <- pbmclapply(
   1:nrow(meta), function(i) {
+    print(paste0("Reading data for ", meta$sampleId[i]))
     # read data
     rna <- readRDS(paste0("disco/", meta$sampleId[i], ".rds"))
           # rename cells
@@ -58,27 +64,37 @@ rna.list <- pbmclapply(
     rna <- AddMetaData(rna,bm$simplified_ct, col.name="simplified_ct")
     # drop cells that are not in the integrated assay, so no cell type can be inferred
     rna <- subset(rna, subset= ct != "NA")
-    # filter cell type -- only immature cells
-    rna <- subset(rna, subset= simplified_ct %in% c("Progenitor cells", "Monocytes", "B cells", "Dendritic cells","Erythrocytes", "Granulocytes"))
-
+    if (ncol(rna) < 100) {
+      print(paste0("Skipping ", meta$sampleId[i], " because there are only ", ncol(rna), " cell(s) left (>100 required)"))
+      return(NULL)
+    }
+    # filter cell type -- only progenitor cells
+    rna <- subset(rna, subset= simplified_ct == "Progenitor cells")
+    # skip sample if there are very few cells left
+    if (ncol(rna) < 100) {
+      print(paste0("Skipping ", meta$sampleId[i], " because there are only ", ncol(rna), " cell(s) left (>100 required)"))
+      return(NULL)
+    }
     # pre-process
+    DefaultAssay(rna) <- "RNA"
     rna <- NormalizeData(rna)
     rna <- FindVariableFeatures(rna)
     # return preprocessed object
     return(rna)
   }, mc.cores = 40
 )
-
+skipped_samples
 ```
 
-IDk what this is
+
+Here they force at least 100 cells per sample and make sure that all the sample matrices have the same number of features.
+I lower it to 100 per samples because of the progenitors.
 
 ```{r}
-# at least 500 cells per sample
-rna.list <- rna.list[which(unlist(lapply(rna.list, ncol)) > 500)]
-# 33538 features in total (???)
+# at least 100 cells per sample
+rna.list <- rna.list[which(unlist(lapply(rna.list, ncol)) > 100)]
+# 33538 features in total
 rna.list <- rna.list[which(unlist(lapply(rna.list, nrow)) == 33538)]
-
 ```
 Save the list
 ```{r}
@@ -178,7 +194,7 @@ rna.data <- AddMetaData(rna.data, meta)
 # rna.data@assays$RNA@counts <- matrix(0)
 # rna.data@assays$RNA@scale.data <- matrix(0)
 # rna.data@assays$raw@counts <- matrix(0)
-saveRDS(rna.data, "rna_processed_immature.rds", compress = F)
+saveRDS(rna.data, "rna_processed_adult_progenitors.rds", compress = F)
 ```
 
 Plot umap
@@ -232,7 +248,7 @@ rna.data <- AddMetaData(rna.data,bm$gender, col.name="gender")
 ```
 save the cell type annoted dataset
 ```{r}
-saveRDS(rna.data, "rna_annotated_immature.rds", compress = F)
+saveRDS(rna.data, "rna_annotated_adult_progenitors.rds", compress = F)
 ```
 plot
 ```{r}
