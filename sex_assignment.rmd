@@ -53,7 +53,7 @@ seurat_obj %>% dittoBarPlot(var = "cell_sex_predicted", group.by = "sample")
 
 ```{r}
 library(ggplot2)
-bar_data <- as.data.frame(table(seurat_obj@meta.data$sex_predicted, seurat_obj@meta.data$sample))
+bar_data <- as.data.frame(table(seurat_obj@meta.data$cell_sex_predicted, seurat_obj@meta.data$sample))
 colnames(bar_data) <- c("Sex", "Sample", "Count")
 ggplot(bar_data, aes(x = Sample, y = Count, fill = Sex)) +
   geom_col(position = "fill") +
@@ -87,11 +87,15 @@ gender_indiv
 
 disco_bm_v2 %>%
   dittoBarPlot(var = "sex_predicted", group.by = "sample_id", split.by = "project_id", split.adjust = list(scales = "free")) -> sex_prediction_disco_bm_v2
+# same but with base ggplot
+
+
 sex_prediction_disco_bm_v2
 ```
 
 # assign sex to individuals
 ```{r}
+# data <- disco_bm_v2
 # data <- AddMetaData(data, metadata = data@meta.data$gender, col.name = "sex" )
 data@meta.data %>%
 group_by (sample, cell_sex_predicted, sex, project_id) %>%
@@ -112,6 +116,16 @@ sex_assi %>%
 mutate(match = ifelse(sex == sample_sex, "match", "no_match")) -> sex_assi
 sex_assi
 ```
+
+# add metadata
+```{r}
+# add metadata to the seurat object
+data[["sample"]] %>%
+left_join(sex_assi, by = c("sample" = "sample")) -> sex_assi_metadata
+sex_assi_metadata
+data <- AddMetaData(data, metadata = sex_assi_metadata$sample_sex, col.name = "pred_sex")
+```
+
 # save seurat obj
 ```{r, eval = FALSE}
 saveRDS(disco_bm_v2, "data/DISCO/bmv2_fixed.rds", compress = FALSE)
