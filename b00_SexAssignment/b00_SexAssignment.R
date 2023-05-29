@@ -3,7 +3,6 @@
 # load libraries
 library(cellXY)
 library(SingleCellExperiment)
-library(org.Hs.eg.db)
 library(Seurat)
 library(ggplot2)
 library(dplyr)
@@ -36,12 +35,6 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
   print("Computing counts...")
   data.counts <- counts(data.sce)
   rm(data.sce)
-  # correct gene names if necessary
-  # ann <- select(org.Hs.eg.db, keys=rownames(sc_data),
-  #               columns=c("GENENAME", "SYMBOL"), keytype="SYMBOL")
-  # m <- match(rownames(data.counts), ann$GENENAME)
-  # rownames(data.counts) <- ann$SYMBOL[m]
-  # classify sex of cells using cellXY
   print("Identifying sex of cells with cellXY...")
   sex_pred <- classifySex(data.counts, genome = genome)
   print("Adding metadata...")
