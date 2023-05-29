@@ -72,34 +72,13 @@ for (i in seq_along(simplified_ct_list$simplified_ct %>% unique())) {
 ```
 For specific plots:
 ```{r}
-# clp
- dittoFreqPlot(rna.data, "ct", sample.by = "sample", # not sample id
-              group.by = "gender", data.out = TRUE, vars.use = "CLP",
-                main = paste0(cell_type, " frequency")) -> freq.data
-  freq.data[[2]] %>%
-    filter(var.data < 0.008) %>% # removes outlier REMOVE THIS LINE
-    filter(label.count.total.per.facet > 10) %>% # remove facet points with less than 10 cells
-    ggplot(aes(x = grouping, y = percent, fill=grouping)) +
-    geom_violin() +
-    geom_point() +
-
-    facet_wrap(~label, scales = "free") +
-          # change name of x axis
-          xlab("Sex") +
-            # change name of y axis
-            ylab("Frequency overall") +
-
-          theme_bw() +
-          # big text
-            theme(text = element_text(size = 20)) +
-
-    labs(title = "CLP frequency under 45") -> clp_plot
-clp_plot
-```
-```{r}
-#mpp
- dittoFreqPlot(rna.data, "ct", sample.by = "sample", # not sample id
-              group.by = "gender", data.out = TRUE, vars.use = "MPP",
+cell_type_list <- c("CLP", "MPP", "CMP", "GMP", "MEP", "CDP", "HSC")
+ct_plot_list <- list()
+for (i in seq_along(cell_type_list)) {
+  cell_type <- cell_type_list[i]
+  print(cell_type)
+  dittoFreqPlot(rna.data, "ct", sample.by = "sample", # not sample id
+              group.by = "gender", data.out = TRUE, vars.use = cell_type,
                 main = paste0(cell_type, " frequency")) -> freq.data
   freq.data[[2]] %>%
     filter(label.count.total.per.facet > 10) %>% # remove facet points with less than 10 cells
@@ -117,65 +96,16 @@ clp_plot
           # big text
             theme(text = element_text(size = 20)) +
 
-    labs(title = "CLP frequency under 45") -> mpp_plot
-mpp_plot
-```
-
-
-```{r}
-#gmp
- dittoFreqPlot(rna.data, "ct", sample.by = "sample", # not sample id
-              group.by = "gender", data.out = TRUE, vars.use = "GMP",
-                main = paste0(cell_type, " frequency")) -> freq.data
-  freq.data[[2]] %>%
-    filter(label.count.total.per.facet > 10) %>% # remove facet points with less than 10 cells
-    ggplot(aes(x = grouping, y = percent, fill=grouping)) +
-    geom_violin() +
-    geom_point() +
-
-    facet_wrap(~label, scales = "free") +
-          # change name of x axis
-          xlab("Sex") +
-            # change name of y axis
-            ylab("Frequency overall") +
-
-          theme_bw() +
-          # big text
-            theme(text = element_text(size = 20)) +
-
-    labs(title = "CLP frequency under 45") -> gmp_plot
-gmp_plot
-
-```
-```{r}
-#cmp
- dittoFreqPlot(rna.data, "ct", sample.by = "sample", # not sample id
-              group.by = "gender", data.out = TRUE, vars.use = "CMP",
-                main = paste0(cell_type, " frequency")) -> freq.data
-  freq.data[[2]] %>%
-    filter(label.count.total.per.facet > 10) %>% # remove facet points with less than 10 cells
-    ggplot(aes(x = grouping, y = percent, fill=grouping)) +
-    geom_violin() +
-    geom_point() +
-
-    facet_wrap(~label, scales = "free") +
-          # change name of x axis
-          xlab("Sex") +
-            # change name of y axis
-            ylab("Frequency overall") +
-
-          theme_bw() +
-          # big text
-            theme(text = element_text(size = 20)) +
-
-    labs(title = "CLP frequency under 45") -> cmp_plot
-cmp_plot
-
+    labs(title = paste(cell_type, "frequency")) -> plot
+  assign(paste0(gsub(" ", "_", cell_type), "_plot"), plot)
+  ct_plot_list <- c(ct_plot_list, mget(paste0(gsub(" ", "_", cell_type), "_plot")))
+}
 ```
 
 ```{r}
 pdf("individual_celltype_distribution.pdf", width = 10, height = 10)
 simplified_ct_plot_list
+ct_plot_list
 dev.off()
 ```
 
