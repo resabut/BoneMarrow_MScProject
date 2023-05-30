@@ -84,7 +84,7 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
       # set colors
       scale_fill_manual(values = c("purple", "yellow", "gray")) +
       # add table with sex assignment
-      labs(x = "Sample", y = "Count", fill = "Cell sex") +
+      labs(x = "Sample", y = "Proportion of cells", fill = "Cell sex") +
       theme_bw()
     if (label_plot){
         freq_plot <- freq_plot + geom_text(aes(label = round(Count, 2)), position = position_fill(vjust = 0.5))
