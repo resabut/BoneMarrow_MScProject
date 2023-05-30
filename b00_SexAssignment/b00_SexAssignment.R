@@ -56,7 +56,7 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
   # compute sample sex
   metadata %>%
     group_by(sample, Pred_cell_sex, sex) %>%
-    count() %>%
+    summarise(n=n()) %>%
     group_by(sample) %>%
     mutate(prop = n/sum(n)) %>%
     pivot_wider(names_from = Pred_cell_sex, values_from = c(n, prop)) %>%
