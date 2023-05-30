@@ -16,17 +16,34 @@ library(patchwork)
 library(dittoSeq)
 library(speckle)
 setwd("/home/inf-38-2022/MScProject/02_CellFrequency/")
+source("../b00_SexAssignment/b00_SexAssignment.R")
 ```
 load data
 ```{r load data}
 rna.data <- readRDS("../01_Integration/rna_annotated_adult_progenitors.rds")
 ```
 
+Add sex annotation
+```{r}
+sex_assign_out <- SexAssign(data = rna.data, sex_col = "gender", sample_col = "sample", report = TRUE,
+                            assay = "raw" # use raw slot for this integrated dataset, because the RNA slot only contains variable features.
+)
+# see table
+sex_assign_out[[2]]
+# see plot
+sex_assign_out[[3]]
+```
+Now we change the seurat object
+```{r}
+
+# add to object
+rna.data <- sex_assign_out[[1]]
+```
 We add simplified cell types
 ```{r}
 b_cells <- c("Naive B cell", "Memory B cell", "Plasma cell", "preB cell", "preB cell (cycling)", "proB cell", "proB cell (cycling)", "Plasma cell")
 t_nk_cells <- c("Naive CD8 T cell", "Effector/Memory CD4 T cell", "Naive CD4 T cell",
-                "GZMK+ CD8 T cell", "Gamma-delta T cell", "IFN-activated T cell", "Treg", "GZMB+ CD8 T cell", "MAIT", "T/NK cell (cycling)", "CD16+ NK", "Tissue-resident NK cell", "CD56+ NK", ilc <- "ILC")
+                "GZMK+ CD8 T cell", "Gamma-delta T cell", "IFN-activated T cell", "Treg", "GZMB+ CD8 T cell", "MAIT", "T/NK cell (cycling)", "CD16+ NK", "Tissue-resident NK cell", "CD56+ NK", "ILC")
 erythrocytes <- c("Early SOX4+ erythroblast", "Late hemoglobin+ erythroblast", "Fetal HBG+ erythrocyte",
                   "Intermediate EPCAM+ erythroblast", "Erythrocyte")
 monocytes <- c("CD14+MHCIIhigh monocyte", "CD14+MHCIIlow monocyte", "Macrophage", "CD16+ monocyte")
@@ -41,8 +58,6 @@ stroma <- c("Fibroblast", "Mesenchymal stromal cell", "Osteoclast")
 ```
 # plot cell frequency plots
 ```{r plot cell frequency}
-
-
 simplified_ct_list <- rna.data@meta.data %>% distinct(simplified_ct, ct)
 simplified_ct_plot_list <- list()
 Idents(rna.data) <- rna.data$simplified_ct
@@ -54,7 +69,7 @@ for (i in seq_along(simplified_ct_list$simplified_ct %>% unique())) {
     filter(simplified_ct == cell_type) %>%
     pull(ct)
   dittoFreqPlot(rna.data, "ct", sample.by = "sample", # not sample id
-                group.by = "gender", data.out = TRUE,
+                group.by = "Predicted_sex", data.out = TRUE,
                 vars.use = ct_list,
 
                 main = paste0(cell_type, " frequency")) -> freq.data
@@ -69,6 +84,17 @@ for (i in seq_along(simplified_ct_list$simplified_ct %>% unique())) {
   assign(paste0(gsub(" ", "_", cell_type), "_plot"), plot)
   simplified_ct_plot_list <- c(simplified_ct_plot_list, mget(paste0(gsub(" ", "_", cell_type), "_plot")))
 }
+# plot frequency of all cell types by sample faceted by report
+rna.data %>%
+  dittoBarPlot(var = "ct", group.by = "sample", split.by = "projectId",
+               split.adjust = list(scales = "free"), # removes empty groups
+               main = "Cell type by individual and project"
+  ) -> ct_individual_plot
+ct_individual_plot
+
+dittoBarPlot(rna.data, var="ct", group.by="sample", scale = "count",
+             split.by = "projectId", split.adjust = list(scales = "free")) -> progenitor_counts
+progenitor_counts
 ```
 For specific plots:
 ```{r}
@@ -78,7 +104,7 @@ for (i in seq_along(cell_type_list)) {
   cell_type <- cell_type_list[i]
   print(cell_type)
   dittoFreqPlot(rna.data, "ct", sample.by = "sample", # not sample id
-              group.by = "gender", data.out = TRUE, vars.use = cell_type,
+              group.by = "Predicted_sex", data.out = TRUE, vars.use = cell_type,
                 main = paste0(cell_type, " frequency")) -> freq.data
   freq.data[[2]] %>%
     filter(label.count.total.per.facet > 10) %>% # remove facet points with less than 10 cells
@@ -104,16 +130,20 @@ for (i in seq_along(cell_type_list)) {
 
 ```{r}
 pdf("individual_celltype_distribution.pdf", width = 10, height = 10)
+ct_individual_plot
 simplified_ct_plot_list
 ct_plot_list
 dev.off()
+ct_individual_plot
+simplified_ct_plot_list
+ct_plot_list
 ```
 
 # speckle
 ```{r speckle}
-propeller(clusters = rna.data$ct, sample = rna.data$sample, group = rna.data$gender) -> prop.out
+propeller(clusters = rna.data$ct, sample = rna.data$sample, group = rna.data$Predicted_sex) -> prop.out
 prop.out
-propeller(clusters = rna.data$ct, sample = rna.data$sample, group = rna.data$gender,
+propeller(clusters = rna.data$ct, sample = rna.data$sample, group = rna.data$Predicted_sex,
           transform = "asin"
 ) -> propeller_asin.out
 propeller_asin.out
@@ -195,8 +225,9 @@ freq_plot
 ```
 
 # now with simplified_ct
-```{r}
-propeller(clusters = rna.data$simplified_ct, sample = rna.data$sample, group = rna.data$gender) -> sct_prop.out
+Not for just progenitors
+```{r, eval = FALSE}
+propeller(clusters = rna.data$simplified_ct, sample = rna.data$sample, group = rna.data$Predicted_sex) -> sct_prop.out
 sct_prop.out
 sct_prop.out$PropRatioLog2 <- log2(sct_prop.out$PropRatio)
 sct_prop.out %>%
@@ -258,7 +289,7 @@ Maybe we should focus on other datasets.
 rna.data@meta.data %>%
 filter(simplified_ct == "Progenitor cells") %>%
 group_by(sample, projectId) %>%
-count() -> counts
+summarise(n=n()) -> counts
 counts
 # change NA in projectId to HCA
 counts$projectId[is.na(counts$projectId)] <- "HCA"
@@ -283,7 +314,7 @@ Idem but for disco
 bm@meta.data %>%
   filter(simplified_ct == "Progenitor cells") %>%
   group_by(sample, cell_sorting) %>%
-  count() -> bm_counts
+  summarise(n=n()) -> bm_counts
 bm_counts
 bm_counts %>%
   ggplot(aes(x = sample, y = n)) +
