@@ -60,8 +60,8 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
     group_by(sample) %>%
     mutate(prop = n/sum(n)) %>%
     pivot_wider(names_from = Pred_cell_sex, values_from = c(n, prop)) %>%
-    mutate(sample_sex = ifelse(prop_Female >= min.percent | prop_Female/prop_Male >= min.ratio, "F",
-                            ifelse(prop_Male >= min.percent | prop_Male/prop_Female >= min.ratio, "M",
+    mutate(sample_sex = ifelse(prop_Female >= min.percent | prop_Female/prop_Male >= min.ratio | prop_Female == 1, "F",
+                            ifelse(prop_Male >= min.percent | prop_Male/prop_Female >= min.ratio | prop_Male == 1, "M",
                                   "inconclusive"))) %>%
     mutate(match = ifelse(sex == sample_sex,
                           "match", "mismatch")) -> sex_assigned_df
