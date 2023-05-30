@@ -10,7 +10,7 @@ library(tidyr)
 library(dittoSeq)
 
 SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample", report = FALSE, label_plot = TRUE,
-                      min.percent = 0.7, min.ratio = 2){
+                      min.percent = 0.7, min.ratio = 2, assay = "RNA"){
   sex_sample_data <- NULL
   freq_plot <- NULL
   print("Checking file format...")
@@ -18,13 +18,14 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
   if (class(data) == "Seurat"){
       orig.format <- "Seurat"
       data.seu <- data
-      data.sce <- as.SingleCellExperiment(data)
+      data.sce <- as.SingleCellExperiment(data, assay = assay)
       rm(data)
     }
     else if (class(data) == "SingleCellExperiment"){
       orig.format <- "SingleCellExperiment"
       data.sce <- data
       data.seu <- as.Seurat(data)
+      DefaultAssay(data.seu) <- assay
       rm(data)
     }
     else{
