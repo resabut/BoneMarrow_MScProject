@@ -91,7 +91,8 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
         }
 
   }
-    print(paste("Done! Returning object in", orig.format, "format..."))
+  print(paste("Done! Returning object in", orig.format, "format..."))
+  print("Predicted sex is under 'Predicted_sex' metadata column")
 
   # return object in original format
   if (orig.format == "Seurat"){
