@@ -31,11 +31,11 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
       stop("Input data must be Seurat or SingleCellExperiment object")
     }
   # Check if required columns are present
-  if (!(sex_col %in% colnames(data@meta.data) && sample_col %in% colnames(data@meta.data))) {
+  if (!(sex_col %in% colnames(data.seu@meta.data) && sample_col %in% colnames(data.seu@meta.data))) {
     stop("Input data must contain columns for sex and sample IDs")
   }
   # Check if sample column contains valid values
-  if (!all(!is.na(data@meta.data[[sample_col]]))) {
+  if (!all(!is.na(data.seu[[sample_col]]))) {
     stop("Sample column must not contain missing values")
   }
   print(paste("Succesfully read input data. Input:", orig.format))
