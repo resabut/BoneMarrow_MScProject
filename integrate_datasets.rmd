@@ -64,15 +64,15 @@ rna.list <- pbmclapply(
     rna <- AddMetaData(rna,bm$simplified_ct, col.name="simplified_ct")
     # drop cells that are not in the integrated assay, so no cell type can be inferred
     rna <- subset(rna, subset= ct != "NA")
-    if (ncol(rna) < 50) {
-      print(paste0("Skipping ", meta$sampleId[i], " because there are only ", ncol(rna), " cell(s) left (>50 required)"))
+    if (ncol(rna) < 25) {
+      print(paste0("Skipping ", meta$sampleId[i], " because there are only ", ncol(rna), " cell(s) left (>25 required)"))
       return(NULL)
     }
     # filter cell type -- only progenitor cells, if there are no progenitor cells, skip the sample
-    if (length(which(rna$simplified_ct == "Progenitor cells")) < 50) {
-      print(paste0("Skipping ", meta$sampleId[i], " because there are not enough progenitor cells (>50 required)"))
+    if (length(which(rna$simplified_ct == "Progenitor cells")) < 25) {
+      print(paste0("Skipping ", meta$sampleId[i], " because there are not enough progenitor cells (>25 required)"))
       return(NULL)
-    } else { # at least 50 progenitor cells
+    } else { # at least 25 progenitor cells
       # subset progenitor cells
       print(paste0("Keeping ", meta$sampleId[i], " progenitor cells"))
       rna <- subset(rna, subset= simplified_ct == "Progenitor cells")
@@ -96,12 +96,12 @@ print(table(unlist(lapply(rna.list, ncol))))
 
 
 
-Here they force at least 50 cells per sample and make sure that all the sample matrices have the same number of features.
-I lower it to 50 per samples because of the progenitors.
+Here they force at least 25 cells per sample and make sure that all the sample matrices have the same number of features.
+I lower it to 25 per samples because of the progenitors.
 
 ```{r}
-# at least 50 cells per sample
-rna.list <- rna.list[which(unlist(lapply(rna.list, ncol)) >= 50)]
+# at least 25 cells per sample
+rna.list <- rna.list[which(unlist(lapply(rna.list, ncol)) >= 25)]
 # 33538 features in total
 rna.list <- rna.list[which(unlist(lapply(rna.list, nrow)) == 33538)]
 ```
@@ -203,7 +203,7 @@ rna.data <- AddMetaData(rna.data, meta)
 # rna.data@assays$RNA@counts <- matrix(0)
 # rna.data@assays$RNA@scale.data <- matrix(0)
 # rna.data@assays$raw@counts <- matrix(0)
-saveRDS(rna.data, "rna_processed_adult_progenitors50.rds", compress = F)
+saveRDS(rna.data, "rna_processed_adult_progenitors25.rds", compress = F)
 ```
 
 Plot umap
@@ -257,7 +257,7 @@ rna.data <- AddMetaData(rna.data,bm$gender, col.name="gender")
 ```
 save the cell type annoted dataset
 ```{r}
-saveRDS(rna.data, "rna_annotated_adult_progenitors50.rds", compress = F)
+saveRDS(rna.data, "rna_annotated_adult_progenitors25.rds", compress = F)
 ```
 plot
 ```{r}
