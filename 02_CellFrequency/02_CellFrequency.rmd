@@ -20,7 +20,7 @@ source("../b00_SexAssignment/b00_SexAssignment.R")
 ```
 load data
 ```{r load data}
-rna.data <- readRDS("../01_Integration/rna_annotated_adult_progenitors.rds")
+rna.data <- readRDS("../01_Integration/rna_annotated_adult_progenitors50.rds")
 ```
 
 Add sex annotation
