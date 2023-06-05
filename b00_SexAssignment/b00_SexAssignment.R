@@ -69,7 +69,8 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
                             ifelse(prop_Male >= min.percent | prop_Male/prop_Female >= min.ratio, "M",
                                   "inconclusive"))) %>%
     mutate(match = ifelse(sex == sample_sex,
-                          "match", "mismatch")) -> sex_assigned_df
+                          "match", ifelse(is.na(sex) | sex == "", "new_annotation",
+                                          "mismatch"))) -> sex_assigned_df
   # add metadata to Seurat object
   metadata %>%
     left_join(sex_assigned_df, by = c("sample" = "sample")) -> sex_assigned_metadata
