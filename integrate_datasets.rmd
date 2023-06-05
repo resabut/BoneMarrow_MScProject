@@ -210,7 +210,7 @@ rna.data <- AddMetaData(rna.data, meta)
 # rna.data@assays$RNA@counts <- matrix(0)
 # rna.data@assays$RNA@scale.data <- matrix(0)
 # rna.data@assays$raw@counts <- matrix(0)
-saveRDS(rna.data, "rna_processed_all_ages_progenitors50.rds", compress = F)
+saveRDS(rna.data, "rna_processed_adult_progenitorsnoHSC50.rds", compress = F)
 ```
 
 Plot umap
@@ -264,7 +264,7 @@ rna.data <- AddMetaData(rna.data,bm$gender, col.name="gender")
 ```
 save the cell type annoted dataset
 ```{r}
-saveRDS(rna.data, "rna_annotated_all_ages_progenitors50.rds", compress = F)
+saveRDS(rna.data, "rna_annotated_adult_progenitorsnoHSC50.rds", compress = F)
 ```
 plot
 ```{r}
