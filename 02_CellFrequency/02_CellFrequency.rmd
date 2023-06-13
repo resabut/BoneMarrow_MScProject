@@ -327,6 +327,14 @@ propeller_asin.out$PropRatioLog2 <- log2(propeller_asin.out$PropRatio)
 propeller_asin.out$M_F_Log2Ratio <- log2(propeller_asin.out$PropMean.M / propeller_asin.out$PropMean.F)
 propeller_asin.out$sign <- ifelse(propeller_asin.out$P.Value < 0.05, "green",
                                   ifelse(propeller_asin.out$P.Value < 0.1, "yellow", rgb(1, 0, 0, 0.25)))
+propeller_asin.out$lineages <- ifelse(propeller_asin.out$BaselineProp.clusters %in% b_cells, "B cell",
+                                      ifelse(propeller_asin.out$BaselineProp.clusters %in% t_nk_cells, "T and NK cell",
+                                             ifelse(propeller_asin.out$BaselineProp.clusters %in% granulocytes, "Granulocyte",
+                                                    ifelse(propeller_asin.out$BaselineProp.clusters %in% monocytes, "Monocyte",
+                                                           ifelse(propeller_asin.out$BaselineProp.clusters %in% erythrocytes, "Erythroid",
+                                                                  ifelse(propeller_asin.out$BaselineProp.clusters %in% progenitor_cells, "Progenitor",
+                                                                         ifelse(propeller_asin.out$BaselineProp.clusters %in% Mk, "Megakaryocitic",
+                                                                                ifelse(propeller_asin.out$BaselineProp.clusters %in% stroma, "Stroma", )))))) ))
 propeller_asin.out %>%
         # filter(P.Value < 0.05) %>%
         # sort by PropRatioLog2 for ggplot
