@@ -299,6 +299,17 @@ summary(decideTests(fit))
 ```
 
 # others
+```{r}
+# create lineages based on ct
+lymphoid_lineage <- c("Naive B cell", "Memory B cell", "Plasma cell", "preB cell", "preB cell (cycling)", "proB cell", "proB cell (cycling)", "Plasma cell", "Naive CD8 T cell", "Effector/Memory CD4 T cell", "Naive CD4 T cell",
+                "GZMK+ CD8 T cell", "Gamma-delta T cell", "IFN-activated T cell", "Treg", "GZMB+ CD8 T cell", "MAIT", "T/NK cell (cycling)", "CD16+ NK", "Tissue-resident NK cell", "CD56+ NK", "ILC", "CLP")
+gmp_lineage <- c("GMP", "CD14+MHCIIhigh monocyte", "CD14+MHCIIlow monocyte", "Macrophage", "CD16+ monocyte", "S100A+ preNeutrophil (cycling)", "S100A+ preNeutrophil", "Metamyelocyte/Band neutrophil",
+                 "Neutrophil", "Promyelocyte", "Myelocyte", "Mast cell")
+dendritic_cell_lineage <- c("pre-pDC (myeloid origin)", "cDC2", "cDC2 (cycling)", "cDC1", "pDC", "CDP", "pre-pDC (lymphoid origin)" )
+mep_lineage <- c("MEP", "Early SOX4+ erythroblast", "Late hemoglobin+ erythroblast", "Fetal HBG+ erythrocyte", "Intermediate EPCAM+ erythroblast", "Erythrocyte", "Megakaryocyte", "Megakaryocyte progenitor", "Platelet")
+early_progenitor_cells <- c("CMP", "HSC", "MPP")
+stroma <- c("Fibroblast", "Mesenchymal stromal cell", "Osteoclast")
+```
 make dot plot
 ```{r}
 # add log2 ratio
@@ -321,20 +332,19 @@ prop.out %>%
         #axis title
         xlab("log2 ratio") +
         ylab("Cell type") -> dotplot
-dotplot
+# dotplot
 # same with propeller_asin.out
 propeller_asin.out$PropRatioLog2 <- log2(propeller_asin.out$PropRatio)
 propeller_asin.out$M_F_Log2Ratio <- log2(propeller_asin.out$PropMean.M / propeller_asin.out$PropMean.F)
-propeller_asin.out$sign <- ifelse(propeller_asin.out$P.Value < 0.05, "green",
-                                  ifelse(propeller_asin.out$P.Value < 0.1, "yellow", rgb(1, 0, 0, 0.25)))
-propeller_asin.out$lineages <- ifelse(propeller_asin.out$BaselineProp.clusters %in% b_cells, "B cell",
-                                      ifelse(propeller_asin.out$BaselineProp.clusters %in% t_nk_cells, "T and NK cell",
-                                             ifelse(propeller_asin.out$BaselineProp.clusters %in% granulocytes, "Granulocyte",
-                                                    ifelse(propeller_asin.out$BaselineProp.clusters %in% monocytes, "Monocyte",
-                                                           ifelse(propeller_asin.out$BaselineProp.clusters %in% erythrocytes, "Erythroid",
-                                                                  ifelse(propeller_asin.out$BaselineProp.clusters %in% progenitor_cells, "Progenitor",
-                                                                         ifelse(propeller_asin.out$BaselineProp.clusters %in% Mk, "Megakaryocitic",
-                                                                                ifelse(propeller_asin.out$BaselineProp.clusters %in% stroma, "Stroma", )))))) ))
+propeller_asin.out$sign <- ifelse(propeller_asin.out$P.Value < 0.05, "less_0.05",
+                                  ifelse(propeller_asin.out$P.Value < 0.1, "less_0.1", "above_0.1"))
+propeller_asin.out$lineages <- ifelse(propeller_asin.out$BaselineProp.clusters %in% lymphoid_lineage, "Lymphoid",
+                                      ifelse(propeller_asin.out$BaselineProp.clusters %in% gmp_lineage, "Granulocyte-Monocyte",
+                                             ifelse(propeller_asin.out$BaselineProp.clusters %in% mep_lineage, "Megakaryocyte-Erythroid",
+                                                    ifelse(propeller_asin.out$BaselineProp.clusters %in% dendritic_cell_lineage, "Dendritic",
+                                                           ifelse(propeller_asin.out$BaselineProp.clusters %in% early_progenitor_cells, "Early progenitors",
+                                                                  ifelse(propeller_asin.out$BaselineProp.clusters %in% stroma, "Stroma",
+                                                                         "Others"))))))
 propeller_asin.out %>%
         # filter(P.Value < 0.05) %>%
         # sort by PropRatioLog2 for ggplot
@@ -342,16 +352,17 @@ propeller_asin.out %>%
         mutate(BaselineProp.clusters = factor(BaselineProp.clusters, levels = BaselineProp.clusters)) %>%
         # make a dot plot with ggplot geom_point
         ggplot(aes(x = M_F_Log2Ratio, y = BaselineProp.clusters,
-                   color = sign)) +
-        scale_color_manual(values = c("green", "yellow", rgb(1, 0, 0, 0.25)),
-                           labels = c("P < 0.05", "P < 0.1", "P > 0.1"),
-                           breaks = c("green", "yellow", rgb(1, 0, 0, 0.25)),
-                           name = "P value") +
+                   color = lineages)) +
         geom_point(
                 # bigger point size
-                size = 5
+                size = 6, aes(alpha= sign)
         ) +
-        geom_vline(xintercept = 0, linetype = "dotted", color = "grey", size = 1.5) +
+        scale_alpha_manual(values = c(1, 0.5, 0.25),
+                           labels = c("P < 0.05", "P < 0.1", "P > 0.1"),
+                           breaks = c("less_0.05", "less_0.1", "above_0.1"),
+                           name = "P value") +
+        geom_vline(xintercept = 0, linetype = "longdash", color = "grey",
+                   linewidth = 1.5, ) +
 
         theme_bw() +
 
@@ -362,7 +373,8 @@ propeller_asin.out %>%
               legend.title = element_text(size = 20),
               legend.text = element_text(size = 15)) +
         # legend position
-        labs(title = "Cell type proportion distribution") +
+        labs(title = "Cell type proportion distribution",
+             color = "Lineages") +
         # add ggplot legend
         # axis limits
         xlim(c(-2.5, 2.5)) +
