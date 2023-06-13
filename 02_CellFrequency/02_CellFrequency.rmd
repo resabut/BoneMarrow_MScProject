@@ -15,19 +15,22 @@ library(Seurat)
 library(patchwork)
 library(dittoSeq)
 library(speckle)
+library(limma)
 setwd("/home/inf-38-2022/MScProject/02_CellFrequency/")
 source("../b00_SexAssignment/b00_SexAssignment.R")
 ```
 load data
 ```{r load data}
-rna.data <- readRDS("../01_Integration/rna_annotated_all_ages_progenitors50.rds")
+# setwd("/home/inf-38-2022/MScProject/02_CellFrequency/")
+rna.data <- readRDS("../01_Integration/rna_annotated_immature.rds")
 ```
 
 Add sex annotation
 ```{r}
 sex_assign_out <- SexAssign(data = rna.data, sex_col = "gender", sample_col = "sample", report = TRUE,
-                            assay = "raw" # use raw slot for this integrated dataset, because the RNA slot only contains variable features.
+                            assay = "raw"
 )
+# if "RNA" is not working, try "raw"
 # see table
 sex_assign_out[[2]]
 # see plot
@@ -38,6 +41,10 @@ Now we change the seurat object
 
 # add to object
 rna.data <- sex_assign_out[[1]]
+# save rds
+saveRDS(rna.data,"../01_Integration/immature_sex_annotated.rds", compress=FALSE)
+# ignore inconclusive sex
+rna.data <- subset(rna.data, subset = Predicted_sex != "inconclusive")
 ```
 We add simplified cell types
 ```{r}
@@ -96,6 +103,18 @@ dittoBarPlot(rna.data, var="ct", group.by="sample", scale = "count",
              split.by = "projectId", split.adjust = list(scales = "free")) -> progenitor_counts
 progenitor_counts
 ```
+This is for the lab meeting tips and tricks
+```{r}
+meta.data <- rna.data@meta.data
+dittoBarPlot(rna.data, var="ct", group.by="sample",
+             split.by = "Predicted_sex", split.adjust = list(scales = "free")) +
+# change axis name
+    labs(x = "Sample", y = "Cell count", title = "Cell type by sample and sex") +
+    # change legend name
+    scale_fill_discrete(name = "Cell types")
+propeller(clusters = meta.data$ct, sample = meta.data$sample, group = meta.data$Predicted_sex) -> prop.out
+prop.out
+```
 For specific plots:
 ```{r}
 cell_type_list <- c("CLP", "MPP", "CMP", "GMP", "MEP", "CDP", "HSC")
@@ -129,7 +148,7 @@ for (i in seq_along(cell_type_list)) {
 ```
 
 ```{r}
-pdf("individual_celltype_distribution.pdf", width = 10, height = 10)
+pdf("individual_celltype_distribution_immature.pdf", width = 10, height = 10)
 ct_individual_plot
 simplified_ct_plot_list
 ct_plot_list
@@ -152,44 +171,201 @@ propeller(clusters = meta.data$ct, sample = meta.data$sample, group = meta.data$
 ) -> propeller_asin.out
 propeller_asin.out
 ```
+
+to a more complex model:
+```{r}
+rna.data@meta.data -> meta.data
+# drop cells with inconclusive Predicted_sex
+meta.data %>%
+        filter(Predicted_sex != "inconclusive") -> meta.data
+
+# get proportion of cells in each cluster for each sample
+props <- getTransformedProps(clusters = meta.data$ct, sample = meta.data$sample, transform="logit")
+# wide format
+props.info <- props$Proportion %>%
+        as.data.frame() %>%
+        pivot_wider(names_from = sample, values_from = Freq)
+ct_rownames <- props.info$clusters
+props.info <- select(props.info, -clusters)
+rownames(props.info) <- ct_rownames
+
+# get sample information
+sample.info <- meta.data %>%
+        distinct(sample, Predicted_sex, age, project_id)
+
+# total number of cells
+nrow(meta.data) -> ncells
+
+design <- model.matrix(~ 0 + sample.info$Predicted_sex + sample.info$project_id)
+colnames(design) <- c("Female", "Male", make.names(colnames(design))[3:ncol(design)])
+
+```
+
+now test
+```{r}
+mycontr <- makeContrasts(Male-Female, levels=design)
+propeller.ttest(props, design, contrasts = mycontr,
+                robust=TRUE, trend=FALSE, sort=TRUE) -> prop.ttest.out
+prop.ttest.out
+```
+
+## continous variable
+```{r}
+rna.data@meta.data -> meta.data
+# drop cells with inconclusive Predicted_sex
+meta.data %>%
+        filter(Predicted_sex != "inconclusive") %>%
+        filter(!is.na(age)) -> meta.data
+
+# get proportion of cells in each cluster for each sample
+props <- getTransformedProps(clusters = meta.data$ct, sample = meta.data$sample, transform="logit")
+# wide format
+props.info <- props$Proportion %>%
+        as.data.frame() %>%
+        pivot_wider(names_from = sample, values_from = Freq)
+ct_rownames <- props.info$clusters
+props.info <- select(props.info, -clusters)
+rownames(props.info) <- ct_rownames
+
+# get sample information
+sample.info <- meta.data %>%
+        distinct(sample, Predicted_sex, age, project_id)
+
+# total number of cells
+nrow(meta.data) -> ncells
+
+
+design <- model.matrix(~ 0 + sample.info$Predicted_sex + sample.info$age)
+colnames(design) <- c("Female", "Male", "Age")
+
+# for random  effect
+dupcor <- duplicateCorrelation(props.info, design, block = sample.info$project_id)
+```
+
+
+now test
+```{r}
+fit <- lmFit(props.info, design,
+             block = sample.info$project_id,
+             correlation = dupcor$consensus)
+fit <- eBayes(fit)
+topTable(fit, number = 10 ) -> top.table
+top.table
+summary(decideTests(fit))
+```
+plot
+## another vers
+```{r}
+rna.data@meta.data -> meta.data
+# drop cells with inconclusive Predicted_sex
+meta.data %>%
+        filter(Predicted_sex != "inconclusive") %>%
+        filter(!is.na(age)) -> meta.data
+
+# get proportion of cells in each cluster for each sample
+props <- getTransformedProps(clusters = meta.data$ct, sample = meta.data$sample, transform="logit")
+# wide format
+props.info <- props$Proportions %>%
+        as.data.frame() %>%
+        pivot_wider(names_from = sample, values_from = Freq)
+ct_rownames <- props.info$clusters
+props.info <- select(props.info, -clusters)
+rownames(props.info) <- ct_rownames
+
+# get sample information
+sample.info <- meta.data %>%
+        distinct(sample, Predicted_sex, age, project_id) %>%
+        # code sex in binary, 0= Male, 1= Female
+        mutate(sex_bin = ifelse(Predicted_sex == "F", 1, 0))
+
+# total number of cells
+nrow(meta.data) -> ncells
+
+design <- model.matrix(~ 0 + sample.info$sex_bin + sample.info$age)
+colnames(design) <- c("sex_bin", "age")
+dupcor <- duplicateCorrelation(props.info, design, block = sample.info$project_id)
+
+```
+
+now test
+```{r}
+fit <- lmFit(props.info, design,
+             block = sample.info$project_id,
+             correlation = dupcor$consensus)
+fit <- eBayes(fit)
+topTable(fit, number = 10 ) -> top.table
+top.table
+summary(decideTests(fit))
+```
+
+# others
 make dot plot
 ```{r}
 # add log2 ratio
 prop.out$PropRatioLog2 <- log2(prop.out$PropRatio)
 prop.out %>%
-  # filter(P.Value < 0.05) %>%
-  # sort by PropRatioLog2 for ggplot
-  arrange(desc(PropRatioLog2)) %>%
-  mutate(BaselineProp.clusters = factor(BaselineProp.clusters, levels = BaselineProp.clusters)) %>%
-  # make a dot plot with ggplot geom_point
-  ggplot(aes(x = PropRatioLog2, y = BaselineProp.clusters)) +
-  scale_size(trans = "reverse", breaks = c(0.05, 0.1, 0.2, 0.5, 0.75)) +
+        # filter(P.Value < 0.05) %>%
+        # sort by PropRatioLog2 for ggplot
+        arrange(desc(PropRatioLog2)) %>%
+        mutate(BaselineProp.clusters = factor(BaselineProp.clusters, levels = BaselineProp.clusters)) %>%
+        # make a dot plot with ggplot geom_point
+        ggplot(aes(x = PropRatioLog2, y = BaselineProp.clusters)) +
+        scale_size(trans = "reverse", breaks = c(0.05, 0.1, 0.5, 0.75)) +
 
-geom_point(aes(size = P.Value, color = I(ifelse(P.Value < 0.05, "green",
-                                                ifelse(P.Value < 0.1, "yellow", "red"))))) +  theme_bw() +
-  # theme(legend.position = "none") +
-  labs(title = "Cell type distribution") -> dotplot
+        geom_point(aes(size = P.Value, color = I(ifelse(P.Value < 0.05, "green",
+                                                        ifelse(P.Value < 0.1, "yellow", "red"))))) +
+        theme_bw() +
+
+        # theme(legend.position = "none") +
+        labs(title = "Cell type distribution") +
+        #axis title
+        xlab("log2 ratio") +
+        ylab("Cell type") -> dotplot
 dotplot
 # same with propeller_asin.out
 propeller_asin.out$PropRatioLog2 <- log2(propeller_asin.out$PropRatio)
-
+propeller_asin.out$M_F_Log2Ratio <- log2(propeller_asin.out$PropMean.M / propeller_asin.out$PropMean.F)
+propeller_asin.out$sign <- ifelse(propeller_asin.out$P.Value < 0.05, "green",
+                                  ifelse(propeller_asin.out$P.Value < 0.1, "yellow", rgb(1, 0, 0, 0.25)))
 propeller_asin.out %>%
-  # filter(P.Value < 0.05) %>%
-  # sort by PropRatioLog2 for ggplot
-  arrange(desc(PropRatioLog2)) %>%
-  mutate(BaselineProp.clusters = factor(BaselineProp.clusters, levels = BaselineProp.clusters)) %>%
-  # make a dot plot with ggplot geom_point
-  ggplot(aes(x = PropRatioLog2, y = BaselineProp.clusters)) +
-  scale_size(trans = "reverse", breaks = c(0.05, 0.1, 0.2, 0.5, 0.75)) +
+        # filter(P.Value < 0.05) %>%
+        # sort by PropRatioLog2 for ggplot
+        arrange(desc(M_F_Log2Ratio)) %>%
+        mutate(BaselineProp.clusters = factor(BaselineProp.clusters, levels = BaselineProp.clusters)) %>%
+        # make a dot plot with ggplot geom_point
+        ggplot(aes(x = M_F_Log2Ratio, y = BaselineProp.clusters,
+                   color = sign)) +
+        scale_color_manual(values = c("green", "yellow", rgb(1, 0, 0, 0.25)),
+                           labels = c("P < 0.05", "P < 0.1", "P > 0.1"),
+                           breaks = c("green", "yellow", rgb(1, 0, 0, 0.25)),
+                           name = "P value") +
+        geom_point(
+                # bigger point size
+                size = 5
+        ) +
+        geom_vline(xintercept = 0, linetype = "dotted", color = "grey", size = 1.5) +
 
-geom_point(aes(size = P.Value, color = I(ifelse(P.Value < 0.05, "green",
-                                                ifelse(P.Value < 0.1, "yellow", rgb(1,0,0,0.25)))))) +
+        theme_bw() +
 
-  theme_bw() +
+        # theme(legend.position = "none") +
+        # axis text labels size
+        theme(axis.title = element_text(size = 20),
+              axis.text = element_text(size = 15),
+              legend.title = element_text(size = 20),
+              legend.text = element_text(size = 15)) +
+        # legend position
+        labs(title = "Cell type proportion distribution") +
+        # add ggplot legend
+        # axis limits
+        xlim(c(-2.5, 2.5)) +
 
-  # theme(legend.position = "none") +
-  labs(title = "Cell type distribution") -> dotplot_asin
+        #axis title
+        xlab("Log2(Male/Female)") +
+        ylab("Cell type") -> dotplot_asin
 dotplot_asin
+# save pdf
+ggplot2::ggsave(file = "dotplot_asin.pdf", plot = dotplot_asin, width = 10, height = 10, units = "in", dpi = 600)
+ggsave(file = "dotplot_asin.png", plot = dotplot_asin, width = 10, height = 10, units = "in", dpi = 600)
 ```
 
 Plot freq m vs f
