@@ -68,9 +68,8 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
     mutate(sample_sex = ifelse(prop_Female >= min.percent | prop_Female/prop_Male >= min.ratio , "F",
                             ifelse(prop_Male >= min.percent | prop_Male/prop_Female >= min.ratio, "M",
                                   "inconclusive"))) %>%
-    mutate(match = ifelse(sex == sample_sex,
-                          "match", ifelse(is.na(sex) | sex == "", "new_annotation",
-                                          "mismatch"))) -> sex_assigned_df
+    mutate(match = ifelse(is.na(sample_sex), "Inconclusive", ifelse(is.na(sex), "New_annotation",
+                          ifelse(sex == sample_sex,"Match", "Mismatch")))) -> sex_assigned_df
   # add metadata to Seurat object
   metadata %>%
     left_join(sex_assigned_df, by = c("sample" = "sample")) -> sex_assigned_metadata
@@ -80,6 +79,7 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
   # generate report
   if (report){
     print("Generating report...")
+    # table
     sex_sample_data <- sex_assigned_df
     # make frequency plot
     bar_data <- as.data.frame(table(unlist(data.seu[["Pred_cell_sex"]]),
@@ -95,6 +95,13 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
     if (label_plot){
         freq_plot <- freq_plot + geom_text(aes(label = round(Count, 2)), position = position_fill(vjust = 0.5))
         }
+    # print some summary stats
+    match_sum <- sex_sample_data %>% dplyr::ungroup() %>% dplyr::count(match)
+    print(match_sum)
+    if(match_sum[which(match_sum == "Mismatch"), 2] > 0){ # if there are mismatches
+      print(paste("Out of", nrow(sex_sample_data), "samples in total,", match_sum[which(match_sum == "Mismatch"), 2],
+                "sample(s) sex prediction did not match the provided annotation!!!!"))
+    }
 
   }
   print(paste("Done! Returning object in", orig.format, "format..."))
@@ -109,4 +116,3 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
     return(list(as.SingleCellExperiment(data.seu), sex_sample_data, freq_plot))
   }
 }
-
