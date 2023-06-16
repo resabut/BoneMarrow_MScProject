@@ -1,6 +1,8 @@
 ---
 title: "Trajectory analysis"
-output: html_notebook
+output:
+  html_notebook:
+    output_file: "Trajectory_analysis_full_DISCO.html"
 ---
 
 This applies slingshot analysis to the data
@@ -17,41 +19,159 @@ library(dplyr)
 library(ggplot2)
 library(Seurat)
 library(SingleCellExperiment)
-# set working directory
-setwd("/home/inf-38-2022/MScProject/")
+library(scales)
+library(tradeSeq)
+library(RColorBrewer)
+
 set.seed(1234)
 # set color palette
 pal <- c(RColorBrewer::brewer.pal(9, "Set1"), RColorBrewer::brewer.pal(8, "Set2"))
+# and functions
+# from https://bustools.github.io/BUS_notebooks_R/slingshot.html#introduction
+#' Assign a color to each cell based on some value
+#'
+#' @param cell_vars Vector indicating the value of a variable associated with cells.
+#' @param pal_fun Palette function that returns a vector of hex colors, whose
+#' argument is the length of such a vector.
+#' @param ... Extra arguments for pal_fun.
+#' @return A vector of hex colors with one entry for each cell.
+cell_pal <- function(cell_vars, pal_fun,...) {
+  if (is.numeric(cell_vars)) {
+    pal <- pal_fun(100, ...)
+    return(pal[cut(cell_vars, breaks = 100)])
+  } else {
+    categories <- sort(unique(cell_vars))
+    pal <- setNames(pal_fun(length(categories), ...), categories)
+    return(pal[cell_vars])
+  }
+}
+
 ```
+
 load data
 ```{r}
-data <- readRDS("01_Integration/rna_annotated.rds")
+data <- readRDS("../01_Integration/rna_annotated_adult__lymph_pDC_50.rds")
 ```
 
-
+```{r}
+# data <- subset(data, subset = ct != "HSC" )
+# # run umap
+# data <- RunUMAP(data, dims = 1:20)
+# data <- RunPCA(data, data)
+```
 # slingshot
 Convert to SCE object and import into slingshot
 ```{r}
-# set ct as ident
-Idents(data) <- data[["ct"]]
-sce <- as.SingleCellExperiment(data)
-sce <- slingshot(sce, clusterLabels = ident, reducedDim = "PCA",
-                      allow.breaks = FALSE)
+Idents(data) <- data$ct
+data <- subset(data, downsample=200)
+sds <- slingshot(Embeddings(data, "umap"), clusterLabels = data$ct,
+                 start.clus = "HSC", end.clus="proB cell", stretch = 0, allow.breaks=FALSE)
+# lineages <- getLineages(Embeddings(data, "umap"), clusterLabels = data$ct,
+#                    start.clus="HSC")
+# lineages@metadata$lineages
+# curves <- getCurves(lineages, approx_points=300)
+
+print("done")
+```
+Add color palettes
+```{r}
+cell_colors <- cell_pal(data$ct, brewer_pal("qual", "Set2"))
+cell_colors_clust <- cell_pal(data$ct, hue_pal())
+```
+```{r}
+plot1 <- DimPlot(data) + NoLegend()
+LabelClusters(plot1, id="ident", color=unique(ggplot_build(plot1)$data[[1]]$colour), size =3, repel=T, max.overlaps=Inf) -> plot2
+plot2
+curves <- slingCurves(sds, as.df = TRUE)
+plot3 <- plot2 +
+geom_path(data = curves %>% arrange(Order),
+              aes(group = Lineage, x=UMAP_1, y=UMAP_2))
+plot3
+# ggsave("full.png", plot2, dpi=600, width = 16, height = 9 )
 ```
 
-Define cell lineages
 ```{r}
-# get the lineages:
-lnes <- getLineages(reducedDim(sce2,"PCA"),
-                    sce2$ident, start.clus = "2")
-lnes@lineages
+plot(Embeddings(data, "umap"), asp=1, pch=16, col=brewer.pal(3, "Set1")[factor(data$gender)], las=1)
+lines(SlingshotDataSet(sds), lwd=3)
+legend(-15, 12, legend = c("F", "M"), title = "Sex", pch=16, col = brewer.pal(3,'Set1')[1:2])
+
+plot(Embeddings(data, "umap"), asp=1, pch=16, col= cell_colors_clust, las=1)
+lines(SlingshotDataSet(sds), lwd=3)
+legend(-15, 12, legend = c("F", "M"), title = "Sex", pch=16, col = brewer.pal(3,'Set1')[1:2])
 ```
+
 ```{r}
-par(mfrow = c(1, 2))
-plot(dimred[, 1:2], col = pal[clustering], cex = 0.5, pch = 16)
-for (i in levels(clustering)) {
-    text(mean(dimred[clustering == i, 1]), mean(dimred[clustering == i, 2]), labels = i, font = 2)
+n <- nrow(Embeddings(data, "umap"))
+L <- ncol(slingPseudotime(sds))
+noise <- runif(n, -0.1, 0.1)
+plot(as.numeric(slingPseudotime(sds)), rep(1:L, each=n) + noise, pch=16, col=brewer.pal(9, "Set1")[factor(data$gender)], las=1, xlab="Pseudotime", ylab="Lineage")
+axis(1);axis(2, at=1:L, las=1)
+plot(as.numeric(slingPseudotime(sds)), rep(1:L, each=n) + noise, pch=16, col=colorRampPalette(brewer.pal(9, "Set1"))(60)[factor(data$ct)], las=1, xlab="Pseudotime", ylab="Lineage")
+axis(1);axis(2, at=1:L, las=1)
+plot(as.numeric(slingPseudotime(sds)), rep(1:L, each=n) + noise, pch=16, col= cell_colors_clust, las=1, xlab="Pseudotime", ylab="Lineage")
+axis(1);axis(2, at=1:L, las=1)
+```
+
+```{r}
+layout(matrix(1:2, nrow=1))
+boxplot(slingPseudotime(sds)[,12] ~factor(data$gender),
+        col=brewer.pal(3, "Set1")[1:2], main="Lineage 12",
+xlab='Sex', ylab='Pseudotime')
+```
+
+tradeSeq
+```{r}
+# BiocParallel::register(BiocParallel::SerialParam())
+BPPARAM <- BiocParallel::bpparam()
+BPPARAM$workers <- 10
+counts <- as.matrix(data@assays$raw@counts)
+filt_counts <- counts[rowSums(counts > 5) > ncol(counts)/100, ] # at least 5 counts, in at least 1% of cells
+dim(filt_counts)
+sce <- fitGAM(counts=filt_counts, sds = as.SlingshotDataSet(sds), parallel = TRUE, BPPARAM = BPPARAM)
+```
+
+## genes that change with pseudotime
+```{r}
+# Define function to plot
+clustering <- "ct"
+plot_differential_expression <- function(feature_id) {
+    feature_id <- pseudotime_association %>% filter(pvalue < 0.05) %>% top_n(1, -waldStat) %>% pull(feature_id)
+    cowplot::plot_grid(plotGeneCount(sds, filt_counts, gene = "S100A9", clusters = clustering, models = sce) + ggplot2::theme(legend.position = "none"),
+
+                       plotSmoothers(sce, as.matrix(counts), gene = feature_id[1]))
 }
-plot(dimred[, 1:2], col = pal[clustering], cex = 0.5, pch = 16)
-lines(lineages, lwd = 3, col = "black")
 ```
+
+
+```{r}
+pseudotime_association <- associationTest(sce)
+pseudotime_association$fdr <- p.adjust(pseudotime_association$pvalue, method = "fdr")
+pseudotime_association <- pseudotime_association[order(pseudotime_association$pvalue), ]
+pseudotime_association$feature_id <- rownames(pseudotime_association)
+```
+
+```{r}
+feature_id <- pseudotime_association %>% filter(pvalue < 0.05) %>% top_n(1, -waldStat) %>% pull(feature_id)
+plot_differential_expression(feature_id)
+```
+
+plot the trajectory and the principal curves (smoothed trajectories)
+```{r}
+
+plot(SlingshotDataSet(sds), col = cell_colors, pch = 16, cex = 0.5, type = "b")
+# lines(sds, lwd = 2, type = 'lineages', col = 'black')
+DimPlot(data, reduction = "umap", group.by = "ct", label = TRUE, pt.size = 0.5) +
+NoLegend() -> p
+curves <- slingCurves(sds, as.df = TRUE)
+curves <- curves %>%
+        filter(Lineage == 7)
+p + geom_path(data = curves %>% arrange(Order),
+              aes(group = Lineage, x=UMAP_1, y=UMAP_2))-> p
+p
+ggsave("a.png", p)
+```
+
+
+
+
+
