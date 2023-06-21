@@ -50,7 +50,7 @@ cell_pal <- function(cell_vars, pal_fun,...) {
 
 load data
 ```{r}
-data <- readRDS("../01_Integration/rna_annotated_adult__lymph_pDC_50.rds")
+data <- readRDS("../01_Integration/immature_sex_annotated.rds")
 ```
 
 ```{r}
@@ -58,14 +58,17 @@ data <- readRDS("../01_Integration/rna_annotated_adult__lymph_pDC_50.rds")
 # # run umap
 # data <- RunUMAP(data, dims = 1:20)
 # data <- RunPCA(data, data)
+
+data <-  subset(data, subset = ct %in% c("GMP", "S100A+ preNeutrophil", "Metamyelocyte/Band neutrophil",
+                 "Neutrophil", "Promyelocyte", "Myelocyte"))
 ```
 # slingshot
 Convert to SCE object and import into slingshot
 ```{r}
 Idents(data) <- data$ct
-data <- subset(data, downsample=200)
-sds <- slingshot(Embeddings(data, "umap"), clusterLabels = data$ct,
-                 start.clus = "HSC", end.clus="proB cell", stretch = 0, allow.breaks=FALSE)
+# data <- subset(data, downsample=200)
+sds <- slingshot(Embeddings(data, "pca"), clusterLabels = data$ct,
+                 start.clus = "GMP", stretch = 0, allow.breaks=FALSE)
 # lineages <- getLineages(Embeddings(data, "umap"), clusterLabels = data$ct,
 #                    start.clus="HSC")
 # lineages@metadata$lineages
@@ -79,8 +82,8 @@ cell_colors <- cell_pal(data$ct, brewer_pal("qual", "Set2"))
 cell_colors_clust <- cell_pal(data$ct, hue_pal())
 ```
 ```{r}
-plot1 <- DimPlot(data) + NoLegend()
-LabelClusters(plot1, id="ident", color=unique(ggplot_build(plot1)$data[[1]]$colour), size =3, repel=T, max.overlaps=Inf) -> plot2
+plot1 <- DimPlot(data, group.by="ct") + NoLegend()
+LabelClusters(plot1, id="ct", color=unique(ggplot_build(plot1)$data[[1]]$colour), size =5, repel=T, max.overlaps=Inf) -> plot2
 plot2
 curves <- slingCurves(sds, as.df = TRUE)
 plot3 <- plot2 +
@@ -88,6 +91,17 @@ geom_path(data = curves %>% arrange(Order),
               aes(group = Lineage, x=UMAP_1, y=UMAP_2))
 plot3
 # ggsave("full.png", plot2, dpi=600, width = 16, height = 9 )
+
+plot1 <- DimPlot(data, group.by="ct", reduction = "pca") + NoLegend()
+LabelClusters(plot1, id="ct", color=unique(ggplot_build(plot1)$data[[1]]$colour), size =5, repel=T, max.overlaps=Inf) -> plot2
+plot2
+curves <- slingCurves(sds, as.df = TRUE)
+plot3 <- plot2 +
+geom_path(data = curves %>% arrange(Order),
+              aes(group = Lineage, x=PC_1, y=PC_2))
+plot3
+
+
 ```
 
 ```{r}
@@ -97,7 +111,12 @@ legend(-15, 12, legend = c("F", "M"), title = "Sex", pch=16, col = brewer.pal(3,
 
 plot(Embeddings(data, "umap"), asp=1, pch=16, col= cell_colors_clust, las=1)
 lines(SlingshotDataSet(sds), lwd=3)
+legend(-15, 12, legend = c("F", "M"), title = "cell type", pch=16, col = brewer.pal(3,'Set1')[1:2])
+# for pca
+plot(Embeddings(data, "pca"), asp=1, pch=16, col= brewer.pal(3, "Set1")[factor(data$gender)], las=1)
+lines(SlingshotDataSet(sds), lwd=3)
 legend(-15, 12, legend = c("F", "M"), title = "Sex", pch=16, col = brewer.pal(3,'Set1')[1:2])
+
 ```
 
 ```{r}
@@ -106,7 +125,9 @@ L <- ncol(slingPseudotime(sds))
 noise <- runif(n, -0.1, 0.1)
 plot(as.numeric(slingPseudotime(sds)), rep(1:L, each=n) + noise, pch=16, col=brewer.pal(9, "Set1")[factor(data$gender)], las=1, xlab="Pseudotime", ylab="Lineage")
 axis(1);axis(2, at=1:L, las=1)
-plot(as.numeric(slingPseudotime(sds)), rep(1:L, each=n) + noise, pch=16, col=colorRampPalette(brewer.pal(9, "Set1"))(60)[factor(data$ct)], las=1, xlab="Pseudotime", ylab="Lineage")
+plot(as.numeric(slingPseudotime(sds)), rep(1:L, each=n) + noise, pch=16,
+     col=colorRampPalette(brewer.pal(9, "Set1"))(60)[factor(data$ct)], las=1,
+     xlab="Pseudotime", ylab="Lineage")
 axis(1);axis(2, at=1:L, las=1)
 plot(as.numeric(slingPseudotime(sds)), rep(1:L, each=n) + noise, pch=16, col= cell_colors_clust, las=1, xlab="Pseudotime", ylab="Lineage")
 axis(1);axis(2, at=1:L, las=1)
@@ -114,9 +135,12 @@ axis(1);axis(2, at=1:L, las=1)
 
 ```{r}
 layout(matrix(1:2, nrow=1))
-boxplot(slingPseudotime(sds)[,12] ~factor(data$gender),
-        col=brewer.pal(3, "Set1")[1:2], main="Lineage 12",
+boxplot(slingPseudotime(sds)[,1] ~factor(data$gender),
+        col=brewer.pal(3, "Set1")[1:2], main="Lineage 1",
 xlab='Sex', ylab='Pseudotime')
+# boxplot(slingPseudotime(sds)[,2] ~factor(data$gender),
+#         col=brewer.pal(3, "Set1")[1:2], main="Lineage 2",
+# xlab='Sex', ylab='Pseudotime')
 ```
 
 tradeSeq
@@ -124,6 +148,9 @@ tradeSeq
 # BiocParallel::register(BiocParallel::SerialParam())
 BPPARAM <- BiocParallel::bpparam()
 BPPARAM$workers <- 10
+
+genes_sel <- read.csv("../VR/2023_06_14_14_17_13/tables/Time.group.5.Linear.csv")
+top_100 <- genes_sel %>% slice_max(-cor, n=100) %>% pull(Gene.Name)
 counts <- as.matrix(data@assays$raw@counts)
 filt_counts <- counts[rowSums(counts > 5) > ncol(counts)/100, ] # at least 5 counts, in at least 1% of cells
 dim(filt_counts)
@@ -154,6 +181,47 @@ pseudotime_association$feature_id <- rownames(pseudotime_association)
 feature_id <- pseudotime_association %>% filter(pvalue < 0.05) %>% top_n(1, -waldStat) %>% pull(feature_id)
 plot_differential_expression(feature_id)
 ```
+
+
+pattern test for differences between lineages
+```{r}
+pattern_association <- patternTest(sce)
+oPat <- order(pattern_association$waldStat, decreasing = TRUE)
+head(rownames(pattern_association)[oPat])
+```
+```{r}
+plotSmoothers(sce, as.matrix(counts), gene=rownames(pattern_association)[oPat[1]], pointCol = "Predicted_sex")
+plotSmoothers(sce, as.matrix(counts), gene=rownames(pattern_association)[oPat[2]], pointCol = "Predicted_sex")
+plotSmoothers(sce, as.matrix(counts), gene=rownames(pattern_association)[oPat[3]], pointCol = "Predicted_sex")
+plotSmoothers(sce, as.matrix(counts), gene=rownames(pattern_association)[oPat[4]], pointCol = "Predicted_sex")
+
+```
+```{r}
+#condition
+sce_c <- fitGAM(counts=filt_counts, sds = as.SlingshotDataSet(sds), parallel = TRUE, BPPARAM = BPPARAM, conditions = factor(data$gender))
+data_sce <- as.SingleCellExperiment(data)
+coldata <- cbind(colData(sce_c), colData(data_sce))
+colData(sce_c) <- DataFrame(coldata)
+condition_association <- conditionTest(sce_c )
+oCond <- order(condition_association$waldStat, decreasing = TRUE)
+head(rownames(condition_association)[oCond])
+```
+```{r}
+gene_to_plot <- rownames(condition_association)[oCond[1]]
+metadata_colour <- "ct"
+plotSmoothers(sce_c, as.matrix(counts), gene=gene_to_plot, pointCol = metadata_colour) +
+labs(title = gene_to_plot)
+gene_to_plot <- rownames(condition_association)[oCond[2]]
+plotSmoothers(sce_c, as.matrix(counts), gene=gene_to_plot, pointCol = metadata_colour) +
+labs(title = gene_to_plot)
+gene_to_plot <- rownames(condition_association)[oCond[length(oCond)]]
+plotSmoothers(sce_c, as.matrix(counts), gene=gene_to_plot, pointCol = metadata_colour) +
+labs(title = gene_to_plot)
+```
+
+
+
+
 
 plot the trajectory and the principal curves (smoothed trajectories)
 ```{r}
