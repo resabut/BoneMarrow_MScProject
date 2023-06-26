@@ -102,6 +102,50 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
       print(paste("Out of", nrow(sex_sample_data), "samples in total,", match_sum[which(match_sum == "Mismatch"), 2],
                 "sample(s) sex prediction did not match the provided annotation!!!!"))
     }
+    # make a heatmap
+    # genes located in the X chromosome that have been reported to escape
+    # X-inactivation
+    # http://bioinf.wehi.edu.au/software/GenderGenes/index.html
+    Xgenes<- c("ARHGAP4","STS","ARSD", "ARSL", "AVPR2", "BRS3", "S100G",
+               "CHM", "CLCN4", "DDX3X","EIF1AX","EIF2S3", "GPM6B",
+               "GRPR", "HCFC1", "L1CAM", "MAOA", "MYCLP1", "NAP1L3",
+               "GPR143", "CDK16", "PLXNB3", "PRKX", "RBBP7", "RENBP",
+               "RPS4X", "TRAPPC2", "SH3BGRL", "TBL1X","UBA1", "KDM6A",
+               "XG", "XIST", "ZFX", "PUDP", "PNPLA4", "USP9X", "KDM5C",
+               "SMC1A", "NAA10", "OFD1", "IKBKG", "PIR", "INE2", "INE1",
+               "AP1S2", "GYG2", "MED14", "RAB9A", "ITM2A", "MORF4L2",
+               "CA5B", "SRPX2", "GEMIN8", "CTPS2", "CLTRN", "NLGN4X",
+               "DUSP21", "ALG13","SYAP1", "SYTL4", "FUNDC1", "GAB3",
+               "RIBC1", "FAM9C","CA5BP1")
+
+    # genes belonging to the male-specific region of chromosome Y (unique genes)
+    # http://bioinf.wehi.edu.au/software/GenderGenes/index.html
+    Ygenes<-c("AMELY", "DAZ1", "PRKY", "RBMY1A1", "RBMY1HP", "RPS4Y1", "SRY",
+              "TSPY1", "UTY", "ZFY","KDM5D", "USP9Y", "DDX3Y", "PRY", "XKRY",
+              "BPY2", "VCY", "CDY1", "EIF1AY", "TMSB4Y","CDY2A", "NLGN4Y",
+              "PCDH11Y", "HSFY1", "TGIF2LY", "TBL1Y", "RPS4Y2", "HSFY2",
+              "CDY2B", "TXLNGY","CDY1B", "DAZ3", "DAZ2", "DAZ4")
+
+    # plot average expression of y and x genes per sample
+    # taken from https://github.com/ConsiglioLab/Sex_differences_in_PBMCs/blob/main/Obtain_data
+    sample.averages <- AverageExpression(subset(data, features = c(Xgenes, Ygenes)), return.seurat = TRUE,
+                                         group.by = sample_col, add.ident = sample_col)
+        # scale data for raw counts (contains all the genes)
+
+    sample.averages <- ScaleData(sample.averages, assay = assay, verbose = FALSE)
+    # remove features with 0 expression in all samples
+    mean_gene_expr <- rowSums(sample.averages[[assay]]@scale.data)
+    var_genes <- names(mean_gene_expr[mean_gene_expr != 0])
+    # get M - F sample order for heatmap
+    sex_sample_data %>%
+      arrange(sample_sex) %>%
+        pull(sample) -> sample_order
+    # order
+    Idents(sample.averages) <- factor(sample.averages@active.ident, levels = sample_order)
+    # plot heatmap
+    DoHeatmap(sample.averages, features = var_genes, size = 2, draw.lines = FALSE,
+              assay = assay) + NoLegend() -> x_y_heatmap
+
 
   }
   print(paste("Done! Returning object in", orig.format, "format..."))
@@ -109,10 +153,10 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
 
   # return object in original format
   if (orig.format == "Seurat"){
-    return(list(data.seu, sex_sample_data, freq_plot))
+    return(list(data.seu, sex_sample_data, freq_plot, x_y_heatmap))
   }
   else if (orig.format == "SingleCellExperiment"){
     # convert to SingleCellExperiment
-    return(list(as.SingleCellExperiment(data.seu), sex_sample_data, freq_plot))
+    return(list(as.SingleCellExperiment(data.seu), sex_sample_data, freq_plot, x_y_heatmap))
   }
 }
