@@ -22,7 +22,8 @@ library(SingleCellExperiment)
 library(scales)
 library(tradeSeq)
 library(RColorBrewer)
-
+library(Lamian)
+library(topGO)
 set.seed(1234)
 # set color palette
 pal <- c(RColorBrewer::brewer.pal(9, "Set1"), RColorBrewer::brewer.pal(8, "Set2"))
@@ -51,7 +52,7 @@ cell_pal <- function(cell_vars, pal_fun,...) {
 load data
 ```{r}
 setwd("/home/inf-38-2022/MScProject/03_TrajectoryAnalysis/")
-data <- readRDS("../01_Integration/immature_sex_annotated.rds")
+data <- readRDS("../01_Integration/data/DISCO/full_DISCO_sex_annotated.rds")
 ```
 
 ```{r}
@@ -64,13 +65,13 @@ data <- RunPCA(data, verbose = FALSE)
 # # run umap
 # data <- RunUMAP(data, dims = 1:20)
 # data <- RunPCA(data, data)
-
-data <-  subset(data, subset = ct %in% c("GMP", "S100A+ preNeutrophil", "Metamyelocyte/Band neutrophil",
-                 "Neutrophil", "Promyelocyte", "Myelocyte"))
-data <- subset(data, subset = project_id == "GSE120221")
-cell_colors <- cell_pal(data$ct, brewer_pal("qual", "Set2"))
-cell_colors_clust <- cell_pal(data$ct, hue_pal())
-Idents(data) <- data$ct
+rna.data <- data
+# rna.data <-  subset(rna.data, subset = ct %in% c("GMP", "S100A+ preNeutrophil", "Metamyelocyte/Band neutrophil",
+#                  "Neutrophil", "Promyelocyte", "Myelocyte"))
+rna.data <- subset(rna.data, subset = project_id %in% c("GSE120221", "HCA_HematopoieticImmuneCellAtlas", "GSE185381"))
+cell_colors <- cell_pal(rna.data$ct, brewer_pal("qual", "Set2"))
+cell_colors_clust <- cell_pal(rna.data$ct, hue_pal())
+Idents(rna.data) <- rna.data$ct
 
 ```
 # slingshot
@@ -84,7 +85,7 @@ print("done")
 
 ```{r}
 plot1 <- DimPlot(data, group.by="ct") + NoLegend()
-LabelClusters(plot1, id="ct", color=unique(ggplot_build(plot1)$data[[1]]$colour), size =5, repel=T, max.overlaps=Inf) -> plot2
+LabelClusters(plot1, id="ct", color=unique(ggplot_build(plot1)$data[[1]]$colour), size = 5, repel=T, max.overlaps=Inf) -> plot2
 plot2
 curves <- slingCurves(sds, as.df = TRUE)
 plot3 <- plot2 +
@@ -141,7 +142,8 @@ xlab='Sex', ylab='Pseudotime')
 # xlab='Sex', ylab='Pseudotime')
 ```
 
-tradeSeq
+# Tradeseq
+
 ```{r}
 # BiocParallel::register(BiocParallel::SerialParam())
 BPPARAM <- BiocParallel::bpparam()
@@ -151,7 +153,7 @@ BPPARAM <- BiocParallel::SerialParam()
 genes_sel <- read.csv("../VR/2023_06_14_14_17_13/tables/Time.group.5.Linear.csv")
 top_100 <- genes_sel %>% slice_max(-cor, n=100) %>% pull(Gene.Name)
 counts <- as.matrix(data@assays$RNA@counts)
-filt_counts <- counts[rowSums(counts > 10) > ncol(counts)/100, ] # at least 5 counts, in at least 1% of cells
+filt_counts <- counts[rowSums(counts > 1) > ncol(counts)/100, ] # at least 5 counts, in at least 1% of cells
 dim(filt_counts)
 sce <- fitGAM(counts=filt_counts, sds = as.SlingshotDataSet(sds), parallel = TRUE, BPPARAM = BPPARAM, conditions = factor(data$gender))
 ```
@@ -160,9 +162,19 @@ sce <- fitGAM(counts=filt_counts, sds = as.SlingshotDataSet(sds), parallel = TRU
 ```{r}
 # Define function to plot
 plot_differential_expression <- function(feature_id, colour_metadata, sce_obj = sce, counts = filt_counts, sds_obj = sds) {
-    cowplot::plot_grid(plotGeneCount(sds_obj, counts, gene = feature_id,  models = sce_obj) + ggplot2::theme(legend.position = "none"),
+    cowplot::plot_grid(plotGeneCount(sds_obj, counts, gene = feature_id,  models = sce_obj) +
+                               ggplot2::theme(legend.position = "none",
+                                              axis.title =element_text(size = 20),
+                                              axis.text = element_text(size = 20)
+                                              ),
 
-                       plotSmoothers(sce, as.matrix(counts), gene = feature_id[1], pointCol = colour_metadata))
+                       plotSmoothers(sce, as.matrix(counts), gene = feature_id[1], pointCol = colour_metadata)+
+                               labs(title = feature_id[1]) +
+            ggplot2::theme(axis.title =element_text(size = 20),
+                                              axis.text = element_text(size = 20),
+                           legend.text = element_text(size = 12),
+                           title = element_text(size = 20)
+                                              ))
 }
 ```
 
@@ -183,11 +195,14 @@ clustering <- "ct" # clustering to plot gene count on dimensional reduction plot
 feature_id <- condition_association %>%
         mutate(feature_id = rownames(condition_association)) %>%
         filter(pvalue < 0.05) %>%
-        top_n(1, -waldStat) %>%
+        slice_max(waldStat, n = 1) %>%
         pull(feature_id)
 
 plot_differential_expression(feature_id, metadata_colour,  sce_obj = sce)
+plot_differential_expression(feature_id, colour_metadata =  "gender",  sce_obj = sce)
 ```
+
+
 
 ```{r}
 plotSmoothers(sce_c, as.matrix(counts), gene=gene_to_plot, pointCol = metadata_colour) +
@@ -222,5 +237,359 @@ ggsave("a.png", p)
 
 
 
+#  Lamian
+
+# Load
+
+load the libraries
+
+```{r}
+library(slingshot)
+library(ggplot2)
+library(Seurat)
+library(SingleCellExperiment)
+library(scales)
+library(tradeSeq)
+library(RColorBrewer)
+library(Lamian)
+library(topGO)
+library(dplyr)
+set.seed(1234)
+'%!in%' <- Negate(`%in%`)
+# set color palette
+pal <- c(RColorBrewer::brewer.pal(9, "Set1"), RColorBrewer::brewer.pal(8, "Set2"))
+# and functions
+# from https://bustools.github.io/BUS_notebooks_R/slingshot.html#introduction
+#' Assign a color to each cell based on some value
+#'
+#' @param cell_vars Vector indicating the value of a variable associated with cells.
+#' @param pal_fun Palette function that returns a vector of hex colors, whose
+#' argument is the length of such a vector.
+#' @param ... Extra arguments for pal_fun.
+#' @return A vector of hex colors with one entry for each cell.
+cell_pal <- function(cell_vars, pal_fun,...) {
+  if (is.numeric(cell_vars)) {
+    pal <- pal_fun(100, ...)
+    return(pal[cut(cell_vars, breaks = 100)])
+  } else {
+    categories <- sort(unique(cell_vars))
+    pal <- setNames(pal_fun(length(categories), ...), categories)
+    return(pal[cell_vars])
+  }
+}
+
+```
+
+load data
+```{r}
+setwd("/home/inf-38-2022/MScProject/03_TrajectoryAnalysis/")
+data <- readRDS("../01_Integration/data/DISCO/full_DISCO_sex_annotated.rds")
+```
+
+```{r}
+data <- FindVariableFeatures(data)
+data <- ScaleData(data, verbose = FALSE)
+data <- RunPCA(data, verbose = FALSE)
+```
+```{r}
+# data <- subset(data, subset = ct != "HSC" )
+# # run umap
+# data <- RunUMAP(data, dims = 1:20)
+# data <- RunPCA(data, data)
+rna.data <- data
+rna.data <-  subset(rna.data, subset = ct %in% c("GMP", "S100A+ preNeutrophil", "Metamyelocyte/Band neutrophil",
+                 "Neutrophil", "Promyelocyte", "Myelocyte"))
+rna.data <- subset(rna.data, subset = project_id %in% c("GSE120221", "HCA_HematopoieticImmuneCellAtlas", "GSE185381"))
+# remove cell types with less than 10 cells in one dataset
+# this code doesn't account for when a ct hasn't been detected in a dataset
+rna.data@meta.data %>% group_by(project_id, ct) %>% summarise(n=n()) %>% filter(n < 10) %>% pull(ct) -> cts_to_remove
+rna.data <- subset(rna.data, subset = ct %!in% cts_to_remove)
+cell_colors <- cell_pal(rna.data$ct, brewer_pal("qual", "Set2"))
+cell_colors_clust <- cell_pal(rna.data$ct, hue_pal())
+Idents(rna.data) <- rna.data$ct
+
+```
+```{r}
+data <- rna.data
+# prepare the data
+cnt <- data@assays$RNA@counts
+pca <- Embeddings(data, "pca")
+umap <- Embeddings(data, "umap")
+sce <- SingleCellExperiment(assays = list(counts = cnt), colData = colData(as.SingleCellExperiment(data)))
+reducedDims(sce) <- list(PCA = pca, UMAP = umap)
+# cluster will be "ct"
+system.time({
+  sce <- slingshot(sce, clusterLabels = 'ct', reducedDim = 'UMAP')
+})
+```
+
+plot
+
+```{r}
+plot(reducedDims(sce)$UMAP,
+   col = cell_colors_clust,
+  pch=16,
+      asp = 1,
+ xlab = 'UMAP 1',
+ylab = 'UMAP 2')
+lines(SlingshotDataSet(sce), lwd=2, type = 'lineages', col = 'black')
+lines(SlingshotDataSet(sce)@curves$Lineage1$s, lwd=2, col = 'red')
+
+# pseudotime
+library(grDevices)
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(nrow(umap))
+plotcol <- colors[cut(sce$slingPseudotime_1, breaks=nrow(umap))]
+plot(reducedDims(sce)$UMAP,
+     col = plotcol,
+     pch=16,
+     asp = 1,
+     xlab = 'UMAP 1',
+     ylab = 'UMAP 2')
+lines(SlingshotDataSet(sce)@curves$Lineage1$s, lwd=2, col='black')
+```
 
 
+
+```{r}
+# select one lineages
+pt <- sce$slingPseudotime_1
+names(pt) <- colnames(cnt) # add name of cells
+summary(pt)
+```
+
+It is good if not NA's
+Otherwise, remove them
+
+```{r}
+pt <- pt[!is.na(pt)]
+selectedCell <- names(pt)
+```
+
+
+check cells per sample
+```{r}
+data@meta.data %>%
+        filter(rownames(.) %in% selectedCell) %>%
+        count(sample)
+```
+Some cells have very few cells, less than 50
+let's remove them
+```{r}
+sample <- data@meta.data %>%
+        filter(rownames(.) %in% selectedCell) %>%
+          dplyr::select(sample)
+selectedSample <- data@meta.data %>%
+        filter(rownames(.) %in% selectedCell) %>%
+        count(sample) %>%
+          filter(n > 50) %>%
+            pull(sample)
+selectedCell2 <-data@meta.data %>%
+        filter(rownames(.) %in% selectedCell) %>%
+        filter(sample %in% selectedSample) %>%
+            rownames()
+# subset sce
+sce <- sce[,selectedCell2]
+data_sub <- subset(data, cells = selectedCell2)
+data_sub@meta.data %>%
+        filter(rownames(.) %in% selectedCell) %>%
+        count(sample)
+```
+
+
+
+
+Run module 3
+```{r}
+select <- dplyr::select
+cellanno <- data_sub@meta.data %>%
+        dplyr::select(ct, sample) %>%
+        mutate(cell = as.character(rownames(.)),
+               sample = as.character(sample)) %>%
+        dplyr::select(cell, sample)
+
+sex_design <- data_sub@meta.data %>%
+        distinct(gender, Predicted_sex, sample) %>%
+        mutate(intercept = 1) %>%
+        mutate(sex_bin = ifelse(gender == "M", 1,
+                                ifelse(gender == "F", 0, NA)))
+rownames(sex_design) <- sex_design$sample
+sex_design %>% select(intercept, sex_bin) -> sex_design
+
+# only variable features
+var_genes <- VariableFeatures(data_sub)
+GetAssayData(data_sub)[var_genes,]-> expr
+filtr_expr <- expr
+# filtr_expr <- expr[rowSums(expr > 10) > ncol(expr)/100, ]
+filtr_expr <- LogNormalize(filtr_expr)
+
+Res <- lamian_test(
+expr = as.matrix(filtr_expr),
+cellanno = cellanno,
+pseudotime = pt[selectedCell2],
+design = sex_design,
+verbose.output = TRUE,
+test.type = 'variable',
+testvar = 2,
+permuiter = 3,
+ncores = 10
+)
+```
+
+# tutorial
+
+```{r}
+suppressMessages(library(Lamian))
+data(slingshot_data)
+suppressMessages(library(slingshot))
+suppressMessages(library(SingleCellExperiment))
+suppressMessages(library(mclust))
+
+cnt <- data@assays$RNA@counts
+pca <- Embeddings(data, "pca")
+umap <- Embeddings(data, "umap")
+cellanno <- data@meta.data %>%
+        select(ct, sample) %>%
+        mutate(cell = as.character(rownames(.)),
+               sample = as.character(sample)) %>%
+        select(cell, sample)
+sce <- SingleCellExperiment(assays = List(counts = cnt),
+                            colData = colData(as.SingleCellExperiment(data)))
+reducedDims(sce) <- SimpleList(UMAP = umap)
+cl1 <- Mclust(pca)$classification
+colData(sce)$GMM <- cl1
+system.time({
+  sce <- slingshot(sce, clusterLabels = 'ct', reducedDim = 'UMAP')
+})
+
+
+library(RColorBrewer)
+plot(reducedDims(sce)$UMAP,
+     col = brewer.pal(9,'Set1')[sce$UMAP],
+     pch=16,
+     asp = 1,
+     xlab = 'UMAP_1',
+     ylab = 'UMAP_2')
+lines(SlingshotDataSet(sce), lwd=2, type = 'lineages', col = 'black')
+
+
+library(grDevices)
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(nrow(umap))
+plotcol <- colors[cut(sce$slingPseudotime_1, breaks=nrow(umap))]
+plot(reducedDims(sce)$UMAP,
+     col = plotcol,
+     pch=16,
+     asp = 1,
+     xlab = 'UMAP_1',
+     ylab = 'UMAP_2')
+lines(SlingshotDataSet(sce)@curves[[1]], lwd=2, col='black')
+
+
+pt <- sce$slingPseudotime_1
+names(pt) <- colnames(cnt) ## A vector with names is easier to handle in subsetting.
+summary(pt)
+pt <- pt[!is.na(pt)] ## important
+selectedCell <- names(pt)
+table(cellanno[selectedCell, 2]) ## important
+
+sample <- cellanno[selectedCell, 2]
+selectedSample <- cellanno %>%
+        filter(rownames(.) %in% selectedCell) %>%
+        count(sample) %>%
+          filter(n > 50) %>%
+            pull(sample)
+selectedCell2 <- selectedCell[sample %in% selectedSample]
+expr <- data@assays$RNA@data
+expr <- expr[rowSums(expr > 10) > ncol(expr)/100, ]
+expr <- LogNormalize(expr) # log transformed
+# keep only some genes
+sex_design <- data@meta.data %>%
+        distinct(gender, Predicted_sex, sample) %>%
+        mutate(intercept = 1) %>%
+        mutate(sex_bin = ifelse(gender == "M", 1,
+                                ifelse(gender == "F", 0, NA)))
+
+rownames(sex_design) <- sex_design$sample
+sex_design %>%
+    select(intercept, sex_bin) -> sex_design
+```
+
+```{r}
+Res <- lamian_test(
+  expr = expr[, selectedCell2],
+  cellanno = cellanno[selectedCell2, ],
+  pseudotime = pt[selectedCell2],
+  design = sex_design[selectedSample,],
+  verbose.output = TRUE,
+  test.type = 'variable',
+  testvar = 2,
+  permuiter = 3,
+  ## This argument is for permutation test only.
+  ## Alternatively, we can use test.method = 'chisq' to swich to the chi-square test where we dont' need this argument.
+  ## In permutation test, we suggest that users use default permuiter = 100.
+  ncores = 1
+)
+```
+
+
+## downstream anylsis
+```{r}
+stat <- Res$statistics
+stat <- stat[order(stat[, 1], -stat[, 3]),]
+# genes with FDR.overall < 0.05 cutoff
+diffgene <- rownames(stat[stat[, grep ('^fdr.*overall$', colnames(stat))]< 0.05, ])
+```
+
+Estimate at the population level
+```{r}
+Res$populationFit <- getPopulationFit(Res, gene = diffgene, type = 'variable')
+```
+Group difference for a given covariate
+```{r}
+Res$covariateGroupDiff <- getCovariateGroupDiff(testobj = Res, gene = diffgene)
+Res$cluster <- clusterGene(Res, gene = diffgene, type = 'variable', k = 5) # change k because if very few genes
+```
+I had only 4 genes when testing with 5 clusters, so I changed it to k=2
+
+save rds
+```{r}
+saveRDS(Res, file = 'Res.rds')
+```
+
+
+
+plot expression values
+there is an issue with the colours
+> source("mod_plotXDEHm.R")
+> environment(mod_plotXDEHm) <- asNamespace('Lamian')
+> assignInNamespace("plotXDEHm", mod_plotXDEHm, ns='Lamian')
+this is a hack to get around the issue, but another one is arise
+```{r}
+mod_plotXDEHm(
+  Res,
+  cellWidthTotal = 180,
+  cellHeightTotal = 350,
+  subsampleCell = FALSE,
+  sep = ':.*'
+)
+```
+
+Cluster mean and difference
+```{r}
+plotClusterMeanAndDiff(Res)
+# just diff
+plotClusterDiff(Res, gene = diffgene)
+```
+
+
+## GO analysis
+```{r}
+library(topGO)
+goRes <- GOEnrich(testobj = Res, type = 'variable')
+```
+
+```{r}
+plotGOEnrich(goRes, fdr.cutoff = 0.2)
+```
+
+If error Error in dim(ordered) <- ns (03_Trajectoryanalysis.rmd#591): dims [product 1] do not match the length of object [0]
+it is because there is nothing to show, nothing passes the significant threshold
