@@ -21,8 +21,16 @@ source("../b00_SexAssignment/b00_SexAssignment.R")
 ```
 load data
 ```{r load data}
-# setwd("/home/inf-38-2022/MScProject/02_CellFrequency/")
-rna.data <- readRDS("../01_Integration/rna_annotated_immature.rds")
+setwd("/home/inf-38-2022/MScProject/02_CellFrequency/")
+# rna.data <- readRDS("../01_Integration/immature_sex_annotated.rds")
+rna.data <- readRDS("../01_Integration/data/DISCO/full_DISCO_sex_annotated.rds")
+```
+
+```{r}
+`%!in%` <- Negate('%in%')
+# subset only non foetal samples, unsorted
+rna.data <- subset(rna.data, subset = project_id %!in% c("E-MTAB-9389", "GSE166895")) # foetal
+rna.data <- subset(rna.data, subset = cell_sorting %in% c("", "Bone Marrow Mononuclear Cells", "MNCs")) # unsorted
 ```
 
 Add sex annotation
@@ -50,7 +58,8 @@ We add simplified cell types
 ```{r}
 b_cells <- c("Naive B cell", "Memory B cell", "Plasma cell", "preB cell", "preB cell (cycling)", "proB cell", "proB cell (cycling)", "Plasma cell")
 t_nk_cells <- c("Naive CD8 T cell", "Effector/Memory CD4 T cell", "Naive CD4 T cell",
-                "GZMK+ CD8 T cell", "Gamma-delta T cell", "IFN-activated T cell", "Treg", "GZMB+ CD8 T cell", "MAIT", "T/NK cell (cycling)", "CD16+ NK", "Tissue-resident NK cell", "CD56+ NK", "ILC")
+                "GZMK+ CD8 T cell", "Gamma-delta T cell", "IFN-activated T cell", "Treg", "GZMB+ CD8 T cell", "MAIT", "T/NK cell (cycling)", "CD16+ NK",
+                "Tissue-resident NK cell", "CD56+ NK", "ILC")
 erythrocytes <- c("Early SOX4+ erythroblast", "Late hemoglobin+ erythroblast", "Fetal HBG+ erythrocyte",
                   "Intermediate EPCAM+ erythroblast", "Erythrocyte")
 monocytes <- c("CD14+MHCIIhigh monocyte", "CD14+MHCIIlow monocyte", "Macrophage", "CD16+ monocyte")
@@ -112,6 +121,14 @@ dittoBarPlot(rna.data, var="ct", group.by="sample",
     labs(x = "Sample", y = "Cell count", title = "Cell type by sample and sex") +
     # change legend name
     scale_fill_discrete(name = "Cell types")
+# grup by project
+meta.data <- rna.data@meta.data
+dittoBarPlot(rna.data, var="ct", group.by="sample",
+             split.by = "project_id", split.adjust = list(scales = "free")) +
+# change axis name
+    labs(x = "Sample", y = "Cell count", title = "Cell type by sample and sex") +
+    # change legend name
+    scale_fill_discrete(name = "Cell types")
 propeller(clusters = meta.data$ct, sample = meta.data$sample, group = meta.data$Predicted_sex) -> prop.out
 prop.out
 ```
@@ -164,6 +181,15 @@ rna.data@meta.data -> meta.data
 # drop cells with inconclusive Predicted_sex
 meta.data %>%
         filter(Predicted_sex != "inconclusive") -> meta.data
+cells_to_keep <- c("Naive B cell",  "preB cell", "preB cell (cycling)", "proB cell", "proB cell (cycling)",
+                       "Early SOX4+ erythroblast", "Late hemoglobin+ erythroblast", "Fetal HBG+ erythrocyte", "Intermediate EPCAM+ erythroblast",
+                       "S100A+ preNeutrophil (cycling)", "S100A+ preNeutrophil", "Metamyelocyte/Band neutrophil", "Promyelocyte", "Myelocyte",
+                       "pre-pDC (lymphoid origin)", "pre-pDC (myeloid origin)", "cDC2", "cDC2 (cycling)", "cDC1", "pDC",
+                       "Megakaryocyte", "Megakaryocyte progenitor",
+                       "CLP", "CMP", "GMP", "MEP", "MPP", "CDP", "HSC"
+                       )
+meta.data %>%
+        filter(ct %in% cells_to_keep) -> meta.data
 propeller(clusters = meta.data$ct, sample = meta.data$sample, group = meta.data$Predicted_sex) -> prop.out
 prop.out
 propeller(clusters = meta.data$ct, sample = meta.data$sample, group = meta.data$Predicted_sex,
@@ -178,7 +204,16 @@ rna.data@meta.data -> meta.data
 # drop cells with inconclusive Predicted_sex
 meta.data %>%
         filter(Predicted_sex != "inconclusive") -> meta.data
-
+# drop non-immature cells
+cells_to_keep <- c("Naive B cell",  "preB cell", "preB cell (cycling)", "proB cell", "proB cell (cycling)",
+                       "Early SOX4+ erythroblast", "Late hemoglobin+ erythroblast", "Fetal HBG+ erythrocyte", "Intermediate EPCAM+ erythroblast",
+                       "S100A+ preNeutrophil (cycling)", "S100A+ preNeutrophil", "Metamyelocyte/Band neutrophil", "Promyelocyte", "Myelocyte",
+                       "pre-pDC (lymphoid origin)", "pre-pDC (myeloid origin)", "cDC2", "cDC2 (cycling)", "cDC1", "pDC",
+                       "Megakaryocyte", "Megakaryocyte progenitor",
+                       "CLP", "CMP", "GMP", "MEP", "MPP", "CDP", "HSC"
+                       )
+meta.data %>%
+        filter(ct %in% cells_to_keep) -> meta.data
 # get proportion of cells in each cluster for each sample
 props <- getTransformedProps(clusters = meta.data$ct, sample = meta.data$sample, transform="logit")
 # wide format
@@ -317,7 +352,7 @@ prop.out$PropRatioLog2 <- log2(prop.out$PropRatio)
 prop.out %>%
         # filter(P.Value < 0.05) %>%
         # sort by PropRatioLog2 for ggplot
-        arrange(desc(PropRatioLog2)) %>%
+        arrange(PropRatioLog2) %>%
         mutate(BaselineProp.clusters = factor(BaselineProp.clusters, levels = BaselineProp.clusters)) %>%
         # make a dot plot with ggplot geom_point
         ggplot(aes(x = PropRatioLog2, y = BaselineProp.clusters)) +
@@ -348,7 +383,7 @@ propeller_asin.out$lineages <- ifelse(propeller_asin.out$BaselineProp.clusters %
 propeller_asin.out %>%
         # filter(P.Value < 0.05) %>%
         # sort by PropRatioLog2 for ggplot
-        arrange(desc(M_F_Log2Ratio)) %>%
+        arrange(M_F_Log2Ratio) %>%
         mutate(BaselineProp.clusters = factor(BaselineProp.clusters, levels = BaselineProp.clusters)) %>%
         # make a dot plot with ggplot geom_point
         ggplot(aes(x = M_F_Log2Ratio, y = BaselineProp.clusters,
@@ -387,6 +422,41 @@ dotplot_asin
 ggplot2::ggsave(file = "dotplot_asin.pdf", plot = dotplot_asin, width = 10, height = 10, units = "in", dpi = 600)
 ggsave(file = "dotplot_asin.png", plot = dotplot_asin, width = 10, height = 10, units = "in", dpi = 600)
 ```
+```{r}
+# plot umap coloured by log2 ratio
+# add log2 ratio
+propeller_asin.out$M_F_Log2Ratio <- log2(propeller_asin.out$PropMean.M / propeller_asin.out$PropMean.F)
+
+
+library(grDevices)
+colors <- colorRampPalette(c("red","gray","blue"))(20)
+plotcol <- colors[cut(propeller_asin.out$M_F_Log2Ratio, breaks=20)]
+
+plot1 <- DimPlot(subset(data, downsample=1000, subset = ct %in% rownames(propeller_asin.out)), group.by="ct") + NoLegend()
+LabelClusters(plot1, id="ct", color=plotcol, size = 5, repel=T, max.overlaps=Inf) -> plot2
+plot2
+```
+
+```{r}
+# plot umap coloured by log2 ratio
+# add log2 ratio
+propeller_asin.out$M_F_Log2Ratio <- log2(propeller_asin.out$PropMean.M / propeller_asin.out$PropMean.F)
+propeller_asin.out$ct <- rownames(propeller_asin.out)
+# add metadata
+ct <- data@meta.data["ct"]
+rownames(ct) <- ct$cell_id
+ct %>%
+  left_join(propeller_asin.out, by = c("ct" = "ct") )-> ct
+# add
+data[["log2MF"]] <- ct$M_F_Log2Ratio
+DimPlot(subset(data, downsample=1000, subset = ct %in% rownames(propeller_asin.out)), group.by="log2MF") + NoLegend()
+
+FeaturePlot(subset(data, downsample=1000, subset = ct %in% rownames(propeller_asin.out)), features = "log2MF", cols=c("#ff00ff",  "#ffff66"), blend=FALSE) -> plot1
+LabelClusters(plot1, id="ident", color="black", size = 5, repel=T, max.overlaps=Inf) -> plot2
+plot2
+
+```
+
 
 Plot freq m vs f
 ```{r}
@@ -471,4 +541,291 @@ counts %>%
 
   labs(title = "Progenitor cells counts") -> progenitor_counts
 progenitor_counts
+```
+
+# speckle
+# load
+```{r load libraries}
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(Seurat)
+library(patchwork)
+library(dittoSeq)
+library(speckle)
+library(limma)
+library(RColorBrewer)
+library(scales )
+library(vegan)
+setwd("/home/inf-38-2022/MScProject/02_CellFrequency/")
+source("../b00_SexAssignment/b00_SexAssignment.R")
+```
+load data
+```{r load data}
+setwd("/home/inf-38-2022/MScProject/02_CellFrequency/")
+# rna.data <- readRDS("../01_Integration/immature_sex_annotated.rds")
+rna.data <- readRDS("../01_Integration/data/DISCO/full_DISCO_sex_annotated.rds")
+```
+
+```{r}
+`%!in%` <- Negate('%in%')
+# subset at prject and sample level
+rna.data <- subset(rna.data, subset = project_id %!in% c("E-MTAB-9389", "GSE166895")) # foetal
+# rna.data <- subset(rna.data, subset = project_id %!in% c("E-MTAB-11536")) # samples from diseased patients
+rna.data <- subset(rna.data, subset = cell_sorting %in% c("", "Bone Marrow Mononuclear Cells", "MNCs")) # unsorted2
+rna.data <- subset(rna.data, subset = Predicted_sex != "inconclusive") # sex determined
+
+```
+```{r}
+rna.data@meta.data %>%
+        distinct(project_id, sample, age) %>%
+        filter(project_id %in% c("HCA_HematopoieticImmuneCellAtlas", "GSE120221", "GSE185381")) %>%
+# histogram age split by project_id
+ggplot( aes(x = age, fill = project_id)) +
+geom_histogram(bins = 20) +
+theme_bw()
+```
+
+making it better
+```{r}
+data <- rna.data
+data@meta.data -> meta.data
+
+# get proportions
+props <- getTransformedProps(
+        clusters = meta.data$ct,
+        sample = meta.data$sample,
+        transform = "logit"
+)
+barplot(
+  props$Proportions,
+  col = hue_pal()(nrow(props$Proportions)),
+  legend = TRUE,
+  ylab = "Proportions"
+)
+dittoBarPlot(data, var="ct", group.by="sample",
+             split.by = "Predicted_sex", split.adjust = list(scales = "free")) +
+# change axis name
+    labs(x = "Sample", y = "Cell count", title = "Cell type by sample and sex") +
+    # change legend name
+    scale_fill_discrete(name = "Cell types")
+# grup by project
+dittoBarPlot(data, var="ct", group.by="sample",
+             split.by = "project_id", split.adjust = list(scales = "free")) +
+# change axis name
+    labs(x = "Sample", y = "Cell count", title = "Cell type by sample and sex") +
+    # change legend name
+    scale_fill_discrete(name = "Cell types")
+
+
+```
+
+```{r}
+# remove the projects with only one individual -> introduce batch effects not balanaced by sex
+data@meta.data %>%
+distinct(sample, project_id) %>%
+  group_by(project_id) %>%
+  summarise(n = n()) %>%
+    filter(n > 2)-> projects_to_keep
+projects_to_keep
+data <- subset(data, subset = project_id %in% projects_to_keep$project_id)
+# keep only
+# recalc proportions
+meta.data <- data@meta.data
+props <- getTransformedProps(
+        clusters = meta.data$ct,
+        sample = meta.data$sample,
+        transform = "logit"
+)
+```
+
+
+
+```{r}
+# plot variance
+par(mfrow = c(1, 2))
+plotCellTypeMeanVar(props$Counts)
+plotCellTypePropsMeanVar(props$Counts)
+```
+
+fitting a linear model using the transformed proportion directly
+
+
+
+```{r}
+data <- AddMetaData(data, metadata = ifelse(data$age < 45, "young", "old"), col.name = "age_groups")
+meta.data <- data@meta.data
+
+props <- getTransformedProps(
+        clusters = meta.data$ct,
+        sample = meta.data$sample,
+        transform = "logit"
+)
+# create design matrix
+sample_meta.data <- meta.data %>%
+  distinct(Predicted_sex, sample, project_id, age_groups, age) %>%
+  mutate(project = gsub("-", "_", project_id))
+rownames(sample_meta.data) <- sample_meta.data$sample
+data <- AddMetaData(data, metadata = ifelse(data$age < 45, "young", "old"), col.name = "age_groups")
+
+design <- model.matrix(~ 0 + Predicted_sex + project + age , data = sample_meta.data)
+mycontr <- makeContrasts(Predicted_sexM-Predicted_sexF, levels = design)
+res <- propeller.ttest(props,
+                design,
+        contrast = mycontr,
+        robust = TRUE,
+        trend=FALSE,
+        sort=TRUE
+)
+```
+
+make dotplot
+```{r}
+# create lineages based on ct
+lymphoid_lineage <- c("Naive B cell", "Memory B cell", "Plasma cell", "preB cell", "preB cell (cycling)", "proB cell", "proB cell (cycling)", "Plasma cell", "Naive CD8 T cell", "Effector/Memory CD4 T cell", "Naive CD4 T cell",
+                "GZMK+ CD8 T cell", "Gamma-delta T cell", "IFN-activated T cell", "Treg", "GZMB+ CD8 T cell", "MAIT", "T/NK cell (cycling)", "CD16+ NK", "Tissue-resident NK cell", "CD56+ NK", "ILC", "CLP")
+gmp_lineage <- c("GMP", "CD14+MHCIIhigh monocyte", "CD14+MHCIIlow monocyte", "Macrophage", "CD16+ monocyte", "S100A+ preNeutrophil (cycling)", "S100A+ preNeutrophil", "Metamyelocyte/Band neutrophil",
+                 "Neutrophil", "Promyelocyte", "Myelocyte", "Mast cell")
+dendritic_cell_lineage <- c("pre-pDC (myeloid origin)", "cDC2", "cDC2 (cycling)", "cDC1", "pDC", "CDP", "pre-pDC (lymphoid origin)" )
+mep_lineage <- c("MEP", "Early SOX4+ erythroblast", "Late hemoglobin+ erythroblast", "Fetal HBG+ erythrocyte", "Intermediate EPCAM+ erythroblast", "Erythrocyte", "Megakaryocyte", "Megakaryocyte progenitor", "Platelet")
+early_progenitor_cells <- c("CMP", "HSC", "MPP")
+stroma <- c("Fibroblast", "Mesenchymal stromal cell", "Osteoclast")
+cells_to_keep <- c("Naive B cell",  "preB cell", "preB cell (cycling)", "proB cell", "proB cell (cycling)",              "Early SOX4+ erythroblast", "Late hemoglobin+ erythroblast", "Fetal HBG+ erythrocyte", "Intermediate EPCAM+ erythroblast","S100A+ preNeutrophil (cycling)", "S100A+ preNeutrophil", "Metamyelocyte/Band neutrophil", "Promyelocyte", "Myelocyte", "pre-pDC (lymphoid origin)", "pre-pDC (myeloid origin)", "cDC2", "cDC2 (cycling)", "cDC1", "pDC", "Megakaryocyte", "Megakaryocyte progenitor", "CLP", "CMP", "GMP", "MEP", "MPP", "CDP", "HSC")
+```
+```{r}
+
+res$BaselineProp.clusters <- rownames(res)
+res$PropRatioLog2 <- log2(res$PropRatio)
+res$M_F_Log2Ratio <- log2(res$PropMean.Predicted_sexM / res$PropMean.Predicted_sexF)
+res$sign <- ifelse(res$P.Value < 0.05, "less_0.05",
+                                  ifelse(res$P.Value < 0.1, "less_0.1", "above_0.1"))
+res$lineages <- ifelse(res$BaselineProp.clusters %in% lymphoid_lineage, "Lymphoid",
+                                      ifelse(res$BaselineProp.clusters %in% gmp_lineage, "Granulocyte-Monocyte",
+                                             ifelse(res$BaselineProp.clusters %in% mep_lineage, "Megakaryocyte-Erythroid",
+                                                    ifelse(res$BaselineProp.clusters %in% dendritic_cell_lineage, "Dendritic",
+                                                           ifelse(res$BaselineProp.clusters %in% early_progenitor_cells, "Early progenitors",
+                                                                  ifelse(res$BaselineProp.clusters %in% stroma, "Stroma",
+                                                                         "Others"))))))
+res %>%
+        # only show immune cells
+        # filter(BaselineProp.clusters %in% cells_to_keep) %>%
+        # filter(P.Value < 0.05) %>%
+        # sort by PropRatioLog2 for ggplot
+        arrange(M_F_Log2Ratio) %>%
+        mutate(BaselineProp.clusters = factor(BaselineProp.clusters, levels = BaselineProp.clusters)) %>%
+        # make a dot plot with ggplot geom_point
+        ggplot(aes(x = M_F_Log2Ratio, y = BaselineProp.clusters,
+                   color = lineages)) +
+        geom_point(
+                # bigger point size
+                size = 6, aes(alpha= sign)
+        ) +
+        scale_alpha_manual(values = c(1, 0.5, 0.15),
+                           labels = c("P < 0.05", "P < 0.1", "P > 0.1"),
+                           breaks = c("less_0.05", "less_0.1", "above_0.1"),
+                           name = "P value") +
+        geom_vline(xintercept = 0, linetype = "longdash", color = "grey",
+                   linewidth = 1.5, ) +
+
+        theme_bw() +
+
+        # theme(legend.position = "none") +
+        # axis text labels size
+        theme(axis.title = element_text(size = 20),
+              axis.text = element_text(size = 15),
+              legend.title = element_text(size = 20),
+              legend.text = element_text(size = 15)) +
+        # legend position
+        labs(title = "Cell type proportion distribution",
+             color = "Lineages") +
+        # add ggplot legend
+        # axis limits
+        xlim(c(-3, 3)) +
+
+        #axis title
+        xlab("Log2(Male/Female)") +
+        ylab("Cell type") -> dotplot_asin
+dotplot_asin
+```
+
+
+```{r}
+# # umap colured by log change
+# res$M_F_Log2Ratio <- log2(res$PropMean.Predicted_sexM / res$PropMean.Predicted_sexF)
+#
+# library(grDevices)
+# library(RColorBrewer)
+# colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(ncol(data))
+# plotcol <- colors[cut(res$M_F_Log2Ratio, breaks=ncol(data))]
+# plot(Embeddings(data, "umap"), asp=1, pch=16, col=plotcol , las=1)
+# LabelClusters(plot1, id="ident", color="black", size = 5, repel=T, max.overlaps=Inf) -> plot2
+# plot2
+
+```
+
+```{r}
+# plot umap coloured by log2 ratio
+# add log2 ratio
+res$M_F_Log2Ratio <- log2(res$PropMean.Predicted_sexM / res$PropMean.Predicted_sexF)
+# find ct where log2 ratio is not infinite, e.g. not detected in some sex
+res$ct <- rownames(res)
+
+res[!is.infinite(res$M_F_Log2Ratio),]$ct -> ct_to_show
+# add metadata
+ct <- data@meta.data["ct"]
+rownames(ct) <- ct$cell_id
+ct %>%
+  left_join(res, by = c("ct" = "ct") )-> ct
+# add
+data[["log2MF"]] <- ct$M_F_Log2Ratio
+
+Idents(data) <- data[["ct"]]
+FeaturePlot(subset(data, subset = ct %in% ct_to_show ), features = "log2MF", cols=c("#ff00ff",  "#ffff66"), blend=FALSE, raster = FALSE) -> plot1
+LabelClusters(plot1, id="ident", color="black", size = 5, repel=T, max.overlaps=Inf) -> plot2
+# plot2
+plot2 + paletteer::scale_colour_paletteer_c("ggthemes::Gold-Purple Diverging",
+                                            direction =-1,
+                                            limits = c(-3, 3)
+                                            ) -> plot3
+# plot3
+
+plot2 + scale_color_gradient2(low = "#ff00ff", high = "#ffff66" ,
+                             midpoint = 0, mid = "gray",
+                             limits = c(-3,3)) -> plot4
+plot4
+plot4$data[["FDR"]] <- ct$FDR
+
+plot4 + LabelClusters()
+```
+
+```{r}
+# explore variance
+
+cellfreq <- props$Proportions %>%
+        as.data.frame() %>%
+        pivot_wider(names_from = "clusters",
+                    values_from = "Freq",
+                    ) %>%
+        tibble::column_to_rownames("sample")
+sample_info <- meta.data %>%
+  distinct(Predicted_sex, sample, project_id, age, age_groups) %>%
+  mutate(project = gsub("-", "_",
+                        project_id)) %>%
+        arrange(sample)
+
+adonis.res <- vegan::adonis2(cellfreq ~ Predicted_sex + project + age, data = sample_info, method = "euclidean", permutations = 999)
+adonis.res
+# make stacked bar plot with adonis.res$R2
+
+adonis.res <- vegan::adonis2(cellfreq ~ Predicted_sex + project + age, data = sample_info, method = "euclidean", permutations = 999)
+adonis.res %>%
+        mutate(rownames = rownames(adonis.res)) %>%
+        filter(rownames != "Total") %>%
+ggplot(
+       aes(fill=rownames, y=R2, x= 1)) +
+        geom_bar(stat="identity", position = "stack")
+```
+
+```{r}
+
 ```
