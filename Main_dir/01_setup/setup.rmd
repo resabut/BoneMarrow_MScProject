@@ -1,0 +1,251 @@
+---
+title: "Download and setup Seurat object"
+output: html_document
+---
+
+
+
+```{r}
+setwd("/home/inf-38-2022/MScProject/Main_dir")
+library(tidyr)
+library(dplyr)
+library(Seurat)
+library(ggplot2)
+library(patchwork)
+library(ggridges)
+source("01_setup/SexAssignment.R")
+```
+
+# Download data
+It is v2 of the bone marrow atlas from DISCO.
+```{r}
+# download from url
+url <- "https://zenodo.org/record/7615517/files/disco_bone_marrow_v2.0.rds?download=1"
+dir.create("data", showWarnings = FALSE)
+# increase timeout to 600 seconds
+options(timeout = 10000)
+# download file
+download.file(url, destfile = "data/disco_bone_marrow_v2.0.rds")
+```
+If it fails, manual download
+
+
+# Add preprocessing steps
+
+
+Load object
+
+```{r}
+data <- readRDS("data/disco_bone_marrow_v2.0.rds")
+# restore data slot
+data@assays$RNA@data <- data@assays$RNA@counts
+```
+
+
+Add variable features, scale data and run PCA
+```{r}
+data <- FindVariableFeatures(data)
+data <- ScaleData(data, verbose = FALSE ) # scales data only for variable features
+data <- RunPCA(data, verbose = FALSE)
+```
+
+## Add extra metadata
+ Lineages
+```{r}
+# lineages
+lymphoid_lineage <- c("Naive B cell", "Memory B cell", "Plasma cell", "preB cell", "preB cell (cycling)", "proB cell",
+                      "proB cell (cycling)", "Plasma cell", "Naive CD8 T cell", "Effector/Memory CD4 T cell",
+                      "Naive CD4 T cell", "GZMK+ CD8 T cell", "Gamma-delta T cell", "IFN-activated T cell", "Treg",
+                      "GZMB+ CD8 T cell", "MAIT", "T/NK cell (cycling)", "CD16+ NK", "Tissue-resident NK cell",
+                      "CD56+ NK", "ILC", "CLP")
+gmp_lineage <- c("GMP", "CD14+MHCIIhigh monocyte", "CD14+MHCIIlow monocyte", "Macrophage", "CD16+ monocyte",
+                 "S100A+ preNeutrophil (cycling)", "S100A+ preNeutrophil", "Metamyelocyte/Band neutrophil",
+                 "Neutrophil", "Promyelocyte", "Myelocyte", "Mast cell")
+dendritic_cell_lineage <- c("pre-pDC (myeloid origin)", "cDC2", "cDC2 (cycling)", "cDC1", "pDC", "CDP",
+                            "pre-pDC (lymphoid origin)" )
+mep_lineage <- c("MEP", "Early SOX4+ erythroblast", "Late hemoglobin+ erythroblast", "Fetal HBG+ erythrocyte",
+                 "Intermediate EPCAM+ erythroblast", "Erythrocyte", "Megakaryocyte", "Megakaryocyte progenitor",
+                 "Platelet")
+early_progenitor_cells <- c("CMP", "HSC", "MPP")
+stroma <- c("Fibroblast", "Mesenchymal stromal cell", "Osteoclast")
+lineages <- ifelse(data$ct %in% lymphoid_lineage, "Lymphoid",
+                   ifelse(data$ct %in% gmp_lineage, "GMP",
+                          ifelse(data$ct %in% dendritic_cell_lineage, "Dendritic cell",
+                                 ifelse(data$ct %in% mep_lineage, "MEP",
+                                        ifelse(data$ct %in% early_progenitor_cells, "Early progenitor cells",
+                                               ifelse(data$ct %in% stroma, "Stroma", "Unknown"))))))
+# add to seurat object
+data <- AddMetaData(data, metadata = lineages, col.name = "lineage")
+
+```
+
+Simplified cell types
+```{r}
+# simplified_ct
+b_cells <- c("Naive B cell", "Memory B cell", "Plasma cell", "preB cell", "preB cell (cycling)", "proB cell",
+             "proB cell (cycling)", "Plasma cell")
+t_nk_cells<- c("Naive CD8 T cell", "Effector/Memory CD4 T cell", "Naive CD4 T cell",
+             "GZMK+ CD8 T cell", "Gamma-delta T cell", "IFN-activated T cell", "Treg", "GZMB+ CD8 T cell", "MAIT",
+               "T/NK cell (cycling)","CD16+ NK", "Tissue-resident NK cell", "CD56+ NK","ILC")
+erythrocytes <- c("Early SOX4+ erythroblast", "Late hemoglobin+ erythroblast", "Fetal HBG+ erythrocyte",
+                  "Intermediate EPCAM+ erythroblast", "Erythrocyte")
+monocytes <- c("CD14+MHCIIhigh monocyte", "CD14+MHCIIlow monocyte", "Macrophage", "CD16+ monocyte")
+granulocyte <- c("S100A+ preNeutrophil (cycling)", "S100A+ preNeutrophil", "Metamyelocyte/Band neutrophil",
+                 "Neutrophil", "Promyelocyte", "Myelocyte", "Mast cell")
+dendritic_cells <- c("pre-pDC (lymphoid origin)", "pre-pDC (myeloid origin)", "cDC2", "cDC2 (cycling)", "cDC1", "pDC")
+Mk <- c("Megakaryocyte", "Megakaryocyte progenitor", "Platelet")
+progenitor_cells <- c("CLP", "CMP", "GMP", "MEP", "MPP", "CDP", "HSC")
+stroma <- c("Fibroblast", "Mesenchymal stromal cell", "Osteoclast")
+
+# add a column with the simplified cell type name
+simplified_ct <- ifelse(data$ct %in% b_cells, "B cells",
+                      ifelse(data$ct %in% t_nk_cells, "T/NK cells",
+                                ifelse(data$ct %in% erythrocytes, "Erythrocytes",
+                                        ifelse(data$ct %in% monocytes, "Monocytes",
+                                                ifelse(data$ct %in% granulocyte, "Granulocytes",
+                                                        ifelse(data$ct %in% dendritic_cells, "Dendritic cells",
+                                                                ifelse(data$ct %in% Mk, "Mk",
+                                                                        ifelse(data$ct %in% progenitor_cells, "Progenitor cells",
+                                                                                ifelse(data$ct %in% stroma, "Stroma",
+                                                                                    "Unknown")))))))))
+# add to seurat object
+data <- AddMetaData(data, metadata = simplified_ct, col.name = "simplified_ct")
+
+```
+
+
+## Predict sex
+
+```{r}
+# Run SexAssign
+sex_assign_out <- SexAssign(data = data,
+                            sex_col = "gender",
+                            sample_col = "sample",
+                            do.report = TRUE,
+                            assay = "RNA",
+                            min.percent = 0.7,
+                            min.ratio = 2
+)
+```
+
+Explore the results
+```{r}
+# Table
+sex_assign_out[[2]]
+# look at inconclusive samples
+sex_assign_out[[2]] %>%
+    filter(sample_sex == "inconclusive")
+# Frequency plot
+sex_assign_out[[3]]
+# sex genes heatmap
+sex_assign_out[[4]]
+```
+
+
+New object with Predicted_sex
+```{r}
+data <- sex_assign_out[[1]]
+```
+
+
+# Plot the data
+
+## UMAP
+```{r}
+# create base plot
+plot1 <- DimPlot(data, group.by ="ct", raster = FALSE) + NoLegend()
+# add labels in color
+plot2 <- LabelClusters(plot1, id="ct", color="black", size = 5, repel=T, max.overlaps=Inf) # ident == ct
+plot2
+# add labels in black
+plot3 <- LabelClusters(plot1, id="ct", color="ct", size = 5, repel=T, max.overlaps=Inf)
+plot3
+```
+
+
+## age distribution
+
+Create summary table
+```{r}
+# number of samples per project
+sample_per_proj <- data@meta.data %>%
+                    distinct(project_id, sample, age) %>%
+                    group_by(project_id) %>%
+                    summarise(n_samples = n(),
+                              mean_age = mean(age),
+                              sd_age = sd(age),
+                              min_age = min(age),
+                              max_age = max(age),)
+sample_per_proj
+```
+
+Plots
+```{r}
+# per project
+age_distr_proj <- data@meta.data %>%
+                    ggplot(aes(x = age, y=..density.., fill = factor(project_id))) +
+                    geom_density(alpha = 0.5) +
+                    labs(x = "Age", y = "Density",
+                        title = "Age distribution for every project in DISCO Bone Marrow Atlas v2")
+age_distr_proj
+
+# per Predicted_sex
+age_distr_sex <- data@meta.data %>%
+                    ggplot(aes(x = age, y=..density.., fill = factor(Predicted_sex))) +
+                    geom_density(alpha = 0.5) +
+                    labs(x = "Age", y = "Density",
+                        title = "Age distribution for Males and Females in DISCO Bone Marrow Atlas v2")
+age_distr_sex
+
+# per Predicted_sex and faceted by project
+age_distr_sex_proj <- data@meta.data %>%
+                    ggplot(aes(x = age, y=..density.., fill = factor(Predicted_sex))) +
+                    geom_density(alpha = 0.5) +
+                    facet_wrap(~project_id) +
+                    labs(x = "Age", y = "Density",
+                        title = "Age distribution for Males and Females in DISCO Bone Marrow Atlas v2")
+age_distr_sex_proj
+age_distr_sex_proj <- data@meta.data %>%
+                    ggplot(aes(x = age, y=project_id, fill = factor(Predicted_sex))) +
+                    geom_density_ridges(alpha = 0.5, rel_min_height = 0.01) +
+                    labs(x = "Age", y = "Density",
+                        title = "Age distribution for Males and Females in DISCO Bone Marrow Atlas v2 per project",
+                        fill = "Sex")
+age_distr_sex_proj
+
+```
+
+
+# save
+The object
+```{r}
+dir.create("data/processed", showWarnings = FALSE)
+saveRDS(data, file = "data/processed/DISCO_BM_v2_processed.rds", compress = FALSE)
+```
+
+Plots and tables
+
+```{r}
+dir.create("results/", showWarnings = FALSE) # create results folder
+dir.create("results/plots", showWarnings = FALSE)
+dir.create("results/tables", showWarnings = FALSE)
+
+
+ggsave("results/plots/01_sex_freq.png", sex_assign_out[[3]], dpi=600)
+ggsave("results/plots/01_sex_heatmap.png", sex_assign_out[[4]], dpi=600)
+ggsave("results/plots/01_umap_ct.png", plot2, dpi=600)
+ggsave("results/plots/01_umap_ct_black.png", plot3, dpi=600)
+ggsave("results/plots/01_age_distr_proj.png", age_distr_proj, dpi=600)
+ggsave("results/plots/01_age_distr_sex.png", age_distr_sex, dpi=600)
+ggsave("results/plots/01_age_distr_sex_proj.png", age_distr_sex_proj, dpi=600)
+
+
+write.table(sex_assign_out[[2]], file = "results/tables/01_sample_sex_res.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+write.table(sample_per_proj, file = "results/tables/01_sample_per_proj.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+```
+```{r}
+# save the session info
+sessionInfo()
+# to file
+sink("results/tables/01_session_info.txt")
+```

@@ -1,0 +1,237 @@
+---
+title: "Cell frequency analysis"
+output: html_notebook
+---
+
+
+# load
+```{r load libraries}
+setwd("/home/inf-38-2022/MScProject/Main_dir/")
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(Seurat)
+library(patchwork)
+library(dittoSeq)
+library(speckle)
+library(limma)
+`%!in%` <- Negate('%in%')
+```
+
+
+
+```{r load data}
+data <- readRDS("data/processed/DISCO_BM_v2_processed.rds")
+```
+
+
+# Subset data
+```{r}
+data <- subset(data,
+                    subset = project_id %in% c("HCA_HematopoieticImmuneCellAtlas", "GSE120221", "GSE185381") &
+                             Predicted_sex != "inconclusive")
+```
+
+# Explore data
+
+```{r}
+# cell proportions by sex
+dittoBarPlot(data, var="ct", group.by="sample",
+             split.by = "Predicted_sex", split.adjust = list(scales = "free")) +
+    # change axis name
+    labs(x = "Sample", y = "Cell proportion", title = "Cell type by sample and sex") +
+    # change legend name
+    scale_fill_discrete(name = "Cell types") -> freq_sex
+freq_sex
+
+# cell proportions by project
+dittoBarPlot(data, var="ct", group.by="sample",
+             split.by = "project_id", split.adjust = list(scales = "free")) +
+    # change axis name
+    labs(x = "Sample", y = "Cell proportion", title = "Cell type by sample and project") +
+    # change legend name
+    scale_fill_discrete(name = "Cell types") -> freq_project
+freq_project
+
+# cell proportions by sex, simplified cell types
+dittoBarPlot(data, var="simplified_ct", group.by="sample",
+             split.by = "Predicted_sex", split.adjust = list(scales = "free")) +
+    # change axis name
+    labs(x = "Sample", y = "Cell  proportion", title = "Cell type by sample and project") +
+    # all columns, same width
+    facet_null() +
+    facet_grid(~Predicted_sex, scale="free_x", space="free_x") +
+    # change legend name
+    scale_fill_discrete(name = "Cell types") -> s_freq_sex
+s_freq_sex
+
+
+# cell proportions by project, , simplified cell types
+dittoBarPlot(data, var="simplified_ct", group.by="sample",
+             split.by = "project_id", split.adjust = list(scales = "free")) +
+    # change axis name
+    labs(x = "Sample", y = "Cell  proportion", title = "Cell type by sample and project") +
+    # all columns, same width
+    facet_null() +
+    facet_grid(~project_id, scale="free_x", space="free_x") +
+    # change legend name
+    scale_fill_discrete(name = "Cell types") -> s_freq_project
+s_freq_project
+
+```
+
+# Statistical analysis with Speckle
+
+```{r}
+# prepare input
+meta.data <- data@meta.data
+
+# get proportions
+props <- getTransformedProps(
+        clusters = meta.data$ct,
+        sample = meta.data$sample,
+        transform = "logit"
+)
+
+# create design matrix
+sample_meta.data <- meta.data %>%
+  distinct(Predicted_sex, sample, project_id, age) %>%
+  mutate(project = gsub("-", "_", project_id))
+rownames(sample_meta.data) <- sample_meta.data$sample
+design <- model.matrix(~ 0 + Predicted_sex + project + age , data = sample_meta.data)
+# to compare M vs F
+mycontr <- makeContrasts(Predicted_sexM-Predicted_sexF, levels = design)
+```
+
+```{r}
+res <- propeller.ttest(props,
+                       design,
+                       contrast = mycontr,
+                       robust = TRUE,
+                       trend=FALSE,
+                       sort=TRUE
+)
+res
+```
+
+
+
+
+
+# Plot
+
+Add some more columns to the result table
+```{r}
+res$ct <- rownames(res)
+res$PropRatioLog2 <- log2(res$PropRatio)
+res$M_F_Log2Ratio <- log2(res$PropMean.Predicted_sexM / res$PropMean.Predicted_sexF)
+res$sign <- ifelse(res$P.Value < 0.05, "**",
+                                  ifelse(res$P.Value < 0.1, "*", ""))
+
+```
+
+Import metadata from the Seurat object to the result table
+```{r}
+data@meta.data %>%
+        distinct(ct, lineage) -> ct_lineage
+res %>%
+        left_join(ct_lineage, by = c("ct" = "ct")) -> res
+
+```
+## Dotplot
+
+
+```{r}
+res %>%
+        # only show immune cells
+        # filter(BaselineProp.clusters %in% cells_to_keep) %>%
+        # filter(P.Value < 0.05) %>%
+        # sort by PropRatioLog2 for ggplot
+        arrange(M_F_Log2Ratio) %>%
+        mutate(ct = factor(ct, levels = ct)) %>%
+        # plot
+        ggplot(aes(x = M_F_Log2Ratio, y = ct,
+                   color = lineage)) +
+        # add points
+        geom_point(size = 6, aes(alpha= sign)) +
+        # modify point color
+        scale_alpha_manual(values = c(1, 0.5, 0.15),
+                           labels = c("P < 0.05", "P < 0.1", "P > 0.1"),
+                           breaks = c("**", "*", ""),
+                           name = "P value") +
+        geom_vline(xintercept = 0, linetype = "longdash", color = "grey",
+                   linewidth = 1.5, ) +
+        theme_bw() +
+        # theme(legend.position = "none") +
+        # axis text labels size
+        theme(axis.title = element_text(size = 20),
+              axis.text = element_text(size = 15),
+              legend.title = element_text(size = 20),
+              legend.text = element_text(size = 15)) +
+        # plot title
+        labs(title = "Cell type proportion distribution",
+             color = "Lineages") +
+        # axis limits
+        xlim(c(-3, 3)) +
+        #axis title
+        xlab("Log2(Male/Female)") +
+        ylab("Cell type") -> dotplot
+dotplot
+```
+
+
+## Coloured UMAP
+
+```{r}
+# add M_F_Log2Ratio and sign to the Seurat object
+cell_ct <- data@meta.data["ct"]
+cell_ct$cell_id <- rownames(cell_ct)
+cell_ct <- cell_ct %>%
+        left_join(res, by = c("ct" = "ct"))
+rownames(cell_ct) <- cell_ct$cell_id
+data[["M_F_Log2Ratio"]] <- cell_ct[["M_F_Log2Ratio"]]
+data[["sign"]] <- cell_ct[["sign"]]
+# make labels with significance
+data[["ct_sign"]] <- data@meta.data %>%
+                    mutate(ct_sign = paste0(ct, sign)) %>%
+                    pull(ct_sign)
+```
+
+Plot
+```{r}
+# make umap with log2(M/F) as color
+Idents(data) <- data[["ct_sign"]]
+FeaturePlot(data, features = "M_F_Log2Ratio",
+            blend=FALSE, raster=FALSE) -> col_umap
+# add cell type labels
+col_umap <- LabelClusters(col_umap, id="ident", color="black", size = 5, repel=T, max.overlaps=Inf)
+# add gradient
+col_umap + scale_color_gradient2(low = "#ff00ff", high = "#ffff66" ,
+                             midpoint = 0, mid = "gray",
+                             limits = c(-3,3)) -> col_umap
+col_umap
+```
+
+
+
+# save
+
+Save the plots and tables
+```{r}
+ggsave("results/plots/02_freq_sex.png", freq_sex, dpi = 600)
+ggsave("results/plots/02_freq_project.png", freq_project, dpi = 600)
+ggsave("results/plots/02_s_freq_sex.png", s_freq_sex, dpi = 600)
+ggsave("results/plots/02_s_freq_project.png", s_freq_project, dpi = 600)
+ggsave("results/plots/02_dotplot.png", dotplot, dpi = 600)
+ggsave("results/plots/02_col_umap.png", col_umap, dpi = 600)
+
+write.table(res, "results/tables/02_res.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+# Session info
+
+```{r}
+sessionInfo()
+sink("results/tables/01_session_info.txt")
+
+```
