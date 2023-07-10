@@ -39,7 +39,7 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
   if (!all(!is.na(data.seu[[sample_col]]))) {
     stop("Sample column must not contain missing values")
   }
-  print(paste("Succesfully read input data. Input:", orig.format))
+  print(paste("Successfully read input data. Input:", orig.format))
   # Get counts
   print("Computing counts...")
   data.counts <- counts(data.sce)
@@ -128,7 +128,7 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
 
     # plot average expression of y and x genes per sample
     # taken from https://github.com/ConsiglioLab/Sex_differences_in_PBMCs/blob/main/Obtain_data
-    sample.averages <- AverageExpression(subset(data, features = c(Xgenes, Ygenes)), return.seurat = TRUE,
+    sample.averages <- AverageExpression(data, features = c(Xgenes, Ygenes), return.seurat = TRUE,
                                          group.by = sample_col, add.ident = sample_col)
         # scale data for raw counts (contains all the genes)
 
