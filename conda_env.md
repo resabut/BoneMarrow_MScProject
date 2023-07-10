@@ -180,6 +180,10 @@ mamba install bioconductor-annotationdbi
 mamba install bioconductor-slingshot
 mamba install r-clustree
 mamba install bioconductor-tradeseq
+mamba install r-paletteer
+mamba install r-vegan
+mamba install bioconductor-topgo
+mamba install r-ggridges
 ```
 
 ## R
