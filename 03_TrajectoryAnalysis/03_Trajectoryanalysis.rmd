@@ -2,12 +2,13 @@
 title: "Trajectory analysis"
 output:
   html_notebook:
-    output_file: "Trajectory_analysis_full_DISCO.html"
+    output_file: "Lamian_Trajectory_analysis_full_DISCO.html"
 ---
 
 
 #  Lamian
 tutorial from github
+https://winnie09.github.io/Wenpin_Hou/pages/Lamian.html
 # Load
 
 load the libraries
@@ -122,6 +123,7 @@ lines(SlingshotDataSet(sce)@curves$Lineage1$s, lwd=2, col='black')
 ```{r}
 # select one lineages
 pt <- sce$slingPseudotime_1
+# pt <- round(pt*10000) # made them integers
 names(pt) <- colnames(cnt) # add name of cells
 summary(pt)
 ```
@@ -177,14 +179,25 @@ cellanno <- data_sub@meta.data %>%
         dplyr::select(cell, sample)
 
 sex_design <- data_sub@meta.data %>%
-        distinct(gender, Predicted_sex, sample) %>%
+        distinct(Predicted_sex, sample) %>%
         mutate(intercept = 1) %>%
-        mutate(sex_bin = ifelse(gender == "M", 1,
-                                ifelse(gender == "F", 0, NA)))
+        mutate(sex_bin = ifelse(Predicted_sex == "M", 1,
+                                ifelse(Predicted_sex == "F", 0, NA)))
 rownames(sex_design) <- sex_design$sample
 sex_design %>% select(intercept, sex_bin) -> sex_design
 
+# sex and project design
+sex_proj_design <- data_sub@meta.data %>%
+        distinct(Predicted_sex, sample, project_id) %>%
+                mutate(intercept = 1) %>%
+                mutate(sex_bin = ifelse(Predicted_sex == "M", 1,
+                                ifelse(Predicted_sex == "F", 0, NA)))
+rownames(sex_proj_design) <- sex_proj_design$sample
+sex_proj_design %>% select(intercept, sex_bin, project_id) -> sex_proj_design
+
+
 # only variable features
+data_sub <- FindVariableFeatures(data_sub, selection.method = "vst", nfeatures = 5000)
 var_genes <- VariableFeatures(data_sub)
 GetAssayData(data_sub)[var_genes,]-> expr
 filtr_expr <- expr
@@ -195,11 +208,11 @@ Res <- lamian_test(
 expr = as.matrix(filtr_expr),
 cellanno = cellanno,
 pseudotime = pt[selectedCell2],
-design = sex_design,
+design = sex_proj_design,
 verbose.output = TRUE,
 test.type = 'variable',
 testvar = 2,
-permuiter = 3,
+permuiter = 4,
 ncores = 10
 )
 ```
@@ -211,7 +224,10 @@ stat <- Res$statistics
 stat <- stat[order(stat[, 1], -stat[, 3]),]
 # genes with FDR.overall < 0.05 cutoff
 diffgene <- rownames(stat[stat[, grep ('^fdr.*overall$', colnames(stat))]< 0.05, ])
+length(diffgene)
 ```
+
+
 
 Estimate at the population level
 ```{r}
@@ -226,18 +242,22 @@ I had only 4 genes when testing with 5 clusters, so I changed it to k=2
 
 save rds
 ```{r}
-saveRDS(Res, file = 'Res.rds')
+saveRDS(Res, file = 'Res_5_sex_neutro.rds')
 ```
 
 
 
 plot expression values
 there is an issue with the colours
-> source("mod_plotXDEHm.R")
-> environment(mod_plotXDEHm) <- asNamespace('Lamian')
-> assignInNamespace("plotXDEHm", mod_plotXDEHm, ns='Lamian')
-this is a hack to get around the issue, but another one is arise
+source("mod_plotXDEHm.R")
+environment(mod_plotXDEHm) <- asNamespace('Lamian')
+assignInNamespace("plotXDEHm", mod_plotXDEHm, ns='Lamian')
+
+this is a hack to get around the issue
 ```{r}
+source("mod_plotXDEHm.R")
+environment(mod_plotXDEHm) <- asNamespace('Lamian')
+assignInNamespace("plotXDEHm", mod_plotXDEHm, ns='Lamian')
 mod_plotXDEHm(
   Res,
   cellWidthTotal = 180,
@@ -248,21 +268,41 @@ mod_plotXDEHm(
 ```
 
 Cluster mean and difference
+
+Another issue
+source("mod_plotClusterMeanAndDiff.R")
+environment(mod_plotClusterMeanAndDiff) <- asNamespace('Lamian')
+assignInNamespace("plotClusterMeanAndDiff", mod_plotClusterMeanAndDiff, ns='Lamian')
 ```{r}
-plotClusterMeanAndDiff(Res)
+source("mod_plotClusterMeanAndDiff.R")
+environment(mod_plotClusterMeanAndDiff) <- asNamespace('Lamian')
+assignInNamespace("plotClusterMeanAndDiff", mod_plotClusterMeanAndDiff, ns='Lamian')
+mod_plotClusterMeanAndDiff(Res) # mean doesn't work
 # just diff
 plotClusterDiff(Res, gene = diffgene)
 ```
+
+It seems like only cluster 8 is consistently differentially expressed
+
+```{r}
+# plot Gene
+plotGene(Res, gene = diffgene[1], variable="sex_bin")
+```
+
+
+
 
 
 ## GO analysis
 ```{r}
 library(topGO)
 goRes <- GOEnrich(testobj = Res, type = 'variable')
+# save list of tables to excel
+openxlsx::write.xlsx(goRes, file = 'goRes.xlsx')
 ```
 
 ```{r}
-plotGOEnrich(goRes, fdr.cutoff = 0.2)
+plotGOEnrich(goRes)
 ```
 
 If error Error in dim(ordered) <- ns (03_Trajectoryanalysis.rmd#591): dims [product 1] do not match the length of object [0]
