@@ -57,7 +57,7 @@ freq_project
 dittoBarPlot(data, var="simplified_ct", group.by="sample",
              split.by = "Predicted_sex", split.adjust = list(scales = "free")) +
     # change axis name
-    labs(x = "Sample", y = "Cell  proportion", title = "Cell type by sample and project") +
+    labs(x = "Sample", y = "Cell  proportion", title = "Simplified cell type by sample and sex") +
     # all columns, same width
     facet_null() +
     facet_grid(~Predicted_sex, scale="free_x", space="free_x") +
@@ -70,7 +70,7 @@ s_freq_sex
 dittoBarPlot(data, var="simplified_ct", group.by="sample",
              split.by = "project_id", split.adjust = list(scales = "free")) +
     # change axis name
-    labs(x = "Sample", y = "Cell  proportion", title = "Cell type by sample and project") +
+    labs(x = "Sample", y = "Cell  proportion", title = "Simplified cell type by sample and project") +
     # all columns, same width
     facet_null() +
     facet_grid(~project_id, scale="free_x", space="free_x") +
@@ -222,8 +222,8 @@ ggsave("results/plots/02_freq_sex.png", freq_sex, dpi = 600)
 ggsave("results/plots/02_freq_project.png", freq_project, dpi = 600)
 ggsave("results/plots/02_s_freq_sex.png", s_freq_sex, dpi = 600)
 ggsave("results/plots/02_s_freq_project.png", s_freq_project, dpi = 600)
-ggsave("results/plots/02_dotplot.png", dotplot, dpi = 600)
-ggsave("results/plots/02_col_umap.png", col_umap, dpi = 600)
+ggsave("results/plots/02_dotplot.png", dotplot, dpi = 600, height = 12, width = 10)
+ggsave("results/plots/02_col_umap.png", col_umap, dpi = 600, height = 10, width = 10)
 
 write.table(res, "results/tables/02_res.txt", sep = "\t", quote = FALSE, row.names = FALSE)
 ```
