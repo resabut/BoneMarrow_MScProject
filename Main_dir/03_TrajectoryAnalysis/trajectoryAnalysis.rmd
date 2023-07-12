@@ -1,0 +1,312 @@
+---
+title: "Trajectory Analysis with Lamian"
+output: html_notebook
+---
+
+# Load
+
+load the libraries
+
+```{r}
+setwd("/home/inf-38-2022/MScProject/Main_dir/")
+library(slingshot)
+library(ggplot2)
+library(Seurat)
+library(SingleCellExperiment)
+library(scales)
+library(tradeSeq)
+library(RColorBrewer)
+library(Lamian)
+library(topGO)
+library(dplyr)
+library(grDevices)
+set.seed(1234)
+'%!in%' <- Negate(`%in%`)
+cell_pal <- function(cell_vars, pal_fun,...) {
+  if (is.numeric(cell_vars)) {
+    pal <- pal_fun(100, ...)
+    return(pal[cut(cell_vars, breaks = 100)])
+  } else {
+    categories <- sort(unique(cell_vars))
+    pal <- setNames(pal_fun(length(categories), ...), categories)
+    return(pal[cell_vars])
+  }
+}
+plot_lineage <- function(lineage_to_plot) {
+    cell_colors_clust <- cell_pal(lineage_to_plot$ct, hue_pal())
+    plot(reducedDims(lineage_to_plot)$UMAP,
+         col = cell_colors_clust,
+         pch=16,
+         asp = 1,
+         xlab = 'UMAP 1',
+         ylab = 'UMAP 2')
+    lines(SlingshotDataSet(lineage_to_plot), lwd=2, type = 'lineages', col = 'black')
+    lines(SlingshotDataSet(lineage_to_plot)@curves$Lineage1$s, lwd=2, col = 'red')
+    legend('bottomright', legend = levels(factor(lineage_to_plot$ct)), col = hue_pal()(length(levels(factor
+                                                                                                     (lineage_to_plot$ct)))), pch = 16)
+}
+```
+
+load the data
+```{r}
+data <- readRDS("data/processed/DISCO_BM_v2_processed.rds")
+```
+
+
+# Trajectory Analysis
+## Subset
+remove mature cells, that have left the bone marrow or that are cycling (they group because of their cell cycle)
+Pick only the three studies chosen.
+
+```{r}
+simpl_ct_rm <- c("T/NK cells", "Stroma")
+cycling_ct <- data@meta.data %>%
+                filter(grepl("cycling", ct)) %>%
+                distinct(ct) %>%
+                pull(ct)
+ct_rm <- c("Plasma cell", cycling_ct)
+projects_keep <- c("GSE120221", "HCA_HematopoieticImmuneCellAtlas", "GSE185381")
+data <- subset(data,
+               subset = ct %!in% ct_rm & simplified_ct %!in% simpl_ct_rm & project_id %in% projects_keep)
+```
+
+
+Subset 3 main lineages
+More information on which cell types belong to each lineage in setup.rmd
+```{r}
+
+lineages <- list(data.lymph = subset(data, subset = lineage == "Lymphoid"),
+                 data.myeloid = subset(data, subset = lineage == "GMP"),
+                 data.erythroid = subset(data, subset = lineage == "MEP"),
+                 data.dendritic = subset(data, subset = lineage == "Dendritic cell")
+)
+
+```
+
+
+## Pseudotime
+We obtain pseudotime with slingshot
+```{r}
+lineages.sce <- lapply(lineages, function(x) {
+  sce <- as.SingleCellExperiment(x)
+  slingshot(sce, clusterLabels = "ct", reducedDim="UMAP")
+})
+names(lineages.sce) <- names(lineages)
+
+```
+
+save the pseudotimed objects
+```{r}
+saveRDS(lineages.sce, "data/processed/lineages_sce.rds", compress = FALSE)
+```
+
+## Plot
+Plot UMAP with pseudotime colouring
+```{r}
+plot.slingshot <- lapply(lineages.sce, function(x) {
+    plot(reducedDims(x)$UMAP,
+         # col = ,
+         pch=16,
+         asp = 1,
+         xlab = "UMAP1",
+            ylab = "UMAP2")
+    lines(SlingshotDataSet(x), lwd=2, type="lineages", col="black")
+    lines(SlingshotDataSet(x)@curves$Lineage1$s, lwd = 2, col = "red")
+})
+plot.slingshot <- lapply(lineages.sce, function(x) {
+    data.plot <- as.data.frame(cbind(reducedDims(x)$UMAP, cell_color=cell_pal(x$ct, hue_pal()) ))
+    ggplot(data.plot, aes(x = UMAP_1, y = UMAP_2)) +
+        geom_point(aes(col = cell_color ), size = 16) +
+        # geom_line(aes(group = slingshot_lineages), size = 0.5) +
+        theme_bw() +
+        theme(legend.position = "none") +
+        xlab("UMAP1") +
+        ylab("UMAP2")
+})
+```
+```{r}
+# create all plots with the first lineage
+plot.slingshot <- lapply(lineages.sce, function(x) {
+  function() {
+    plot_lineage(x)
+  }
+})
+```
+
+
+
+
+
+
+# Lamian
+
+Create function that runs everything up to Res
+
+```{r}
+run_lamian <- function(sce, data, permuiter = 5){
+  cnt <- counts(sce)
+  # select one lineage
+  pt <- sce$slingPseudotime_1
+  names(pt) <- colnames(cnt) # add name of cells
+  pt <- pt[!is.na(pt)]
+  selectedCell <- names(pt)
+  sample <- data@meta.data %>%
+    filter(rownames(.) %in% selectedCell) %>%
+    pull(sample)
+  sample <- data@meta.data %>%
+          filter(rownames(.) %in% selectedCell) %>%
+            dplyr::select(sample)
+  selectedSample <- data@meta.data %>%
+          filter(rownames(.) %in% selectedCell) %>%
+          count(sample) %>%
+            filter(n > 50) %>%
+              pull(sample)
+  selectedCell2 <-data@meta.data %>%
+          filter(rownames(.) %in% selectedCell) %>%
+          filter(sample %in% selectedSample) %>%
+              rownames()
+  # subset sce
+  sce <- sce[,selectedCell2]
+  data_sub <- subset(data, cells = selectedCell2)
+  # create cell - sample table
+  cellanno <- data_sub@meta.data %>%
+      dplyr::select(ct, sample) %>%
+      mutate(cell = as.character(rownames(.)),
+             sample = as.character(sample)) %>%
+      dplyr::select(cell, sample)
+  # create design matrix
+  sex_design <- data_sub@meta.data %>%
+          distinct(Predicted_sex, sample) %>%
+          mutate(intercept = 1) %>%
+          mutate(sex_bin = ifelse(Predicted_sex == "M", 1,
+                                  ifelse(Predicted_sex == "F", 0, NA)))
+  rownames(sex_design) <- sex_design$sample
+  sex_design %>% select(intercept, sex_bin) -> sex_design
+  # generate expression matrix
+  # only variable features
+  data_sub <- FindVariableFeatures(data_sub, selection.method = "vst", nfeatures = 2000)
+  var_genes <- VariableFeatures(data_sub)
+  GetAssayData(data_sub)[var_genes,]-> expr
+  filtr_expr <- expr
+  # filtr_expr <- expr[rowSums(expr > 10) > ncol(expr)/100, ]
+  filtr_expr <- LogNormalize(filtr_expr)
+
+  # Run lamian
+  Res <- lamian_test(
+    expr = as.matrix(filtr_expr),
+    cellanno = cellanno,
+    pseudotime = pt[selectedCell2],
+    design = sex_design,
+    verbose.output = TRUE,
+    test.type = 'variable',
+    testvar = 2,
+    permuiter = permuiter,
+    ncores = 10
+    )
+  return(Res)
+}
+```
+
+
+Run Lamian for each lineage
+```{r}
+Res.list <- mapply(run_lamian, lineages.sce, lineages)
+```
+
+save list
+```{r}
+saveRDS(Res.list, "data/processed/Res_list.rds", compress = FALSE)
+```
+
+
+# downstream analysis
+
+
+```{r}
+lamian_downstream <- function(Res) {
+    stat <- Res$statistics
+    stat <- stat[order(stat[, 1], -stat[, 3]),]
+    # genes with FDR.overall < 0.05 cutoff
+    diffgene <- rownames(stat[stat[, grep ('^fdr.*overall$', colnames(stat))]< 0.05, ])
+    # population level stats
+    Res$populationFit <- getPopulationFit(Res, gene = diffgene, type = 'variable')
+    # group difference for a given covariate
+    Res$covariateGroupDiff <- getCovariateGroupDiff(testobj = Res, gene = diffgene)
+    # cluster genes
+    Res$cluster <- clusterGene(Res, gene = diffgene, type = 'variable', k = 5)
+    return(Res)
+}
+```
+```{r}
+stat <- Res$statistics
+stat <- stat[order(stat[, 1], -stat[, 3]),]
+# genes with FDR.overall < 0.05 cutoff
+diffgene <- rownames(stat[stat[, grep ('^fdr.*overall$', colnames(stat))]< 0.05, ])
+length(diffgene)
+```
+
+
+
+Estimate at the population level
+```{r}
+Res$populationFit <- getPopulationFit(Res, gene = diffgene, type = 'variable')
+```
+Group difference for a given covariate
+```{r}
+Res$covariateGroupDiff <- getCovariateGroupDiff(testobj = Res, gene = diffgene)
+Res$cluster <- clusterGene(Res, gene = diffgene, type = 'variable', k = 5) # change k because if very few genes
+```
+I had only 4 genes when testing with 5 clusters, so I changed it to k=2
+
+save rds
+```{r}
+saveRDS(Res, file = 'Res.rds')
+```
+
+
+
+plot expression values
+there is an issue with the colours
+source("mod_plotXDEHm.R")
+environment(mod_plotXDEHm) <- asNamespace('Lamian')
+assignInNamespace("plotXDEHm", mod_plotXDEHm, ns='Lamian')
+
+this is a hack to get around the issue
+```{r}
+source("03_TrajectoryAnalysis/mod_plotXDEHm.R")
+environment(mod_plotXDEHm) <- asNamespace('Lamian')
+assignInNamespace("plotXDEHm", mod_plotXDEHm, ns='Lamian')
+mod_plotXDEHm(
+  Res,
+  cellWidthTotal = 180,
+  cellHeightTotal = 350,
+  subsampleCell = FALSE,
+  sep = ':.*'
+)
+```
+
+Cluster mean and difference
+
+Another issue
+source("mod_plotClusterMeanAndDiff.R")
+environment(mod_plotClusterMeanAndDiff) <- asNamespace('Lamian')
+assignInNamespace("plotClusterMeanAndDiff", mod_plotClusterMeanAndDiff, ns='Lamian')
+```{r}
+source("03_TrajectoryAnalysis/mod_plotClusterMeanAndDiff.R")
+environment(mod_plotClusterMeanAndDiff) <- asNamespace('Lamian')
+assignInNamespace("plotClusterMeanAndDiff", mod_plotClusterMeanAndDiff, ns='Lamian')
+mod_plotClusterMeanAndDiff(Res) # mean doesn't work
+# just diff
+plotClusterDiff(Res, gene = diffgene)
+```
+
+It seems like only cluster 8 is consistently differentially expressed
+
+```{r}
+# plot Gene
+plotGene(Res, gene = diffgene[1:6], variable="sex_bin")
+plotGeneCellAndPopulation(Res, gene = diffgene[1:6], type="variable")
+```
+
+
+
