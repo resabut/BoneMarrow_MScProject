@@ -2,7 +2,7 @@ plot_lineage <- function(lineage_to_plot) {
     cell_colors_clust <- cell_pal(lineage_to_plot$ct, hue_pal())
     plot(reducedDims(lineage_to_plot)$UMAP,
          col = cell_colors_clust,
-         pch=16,
+         pch = 16,
          asp = 1,
          xlab = 'UMAP 1',
          ylab = 'UMAP 2')

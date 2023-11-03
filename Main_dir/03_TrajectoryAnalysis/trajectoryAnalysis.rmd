@@ -20,6 +20,7 @@ library(Lamian)
 library(topGO)
 library(dplyr)
 library(grDevices)
+library(ggrepel)
 set.seed(1234)
 '%!in%' <- Negate(`%in%`)
 cell_pal <- function(cell_vars, pal_fun,...) {
@@ -64,7 +65,7 @@ cycling_ct <- data@meta.data %>%
                 filter(grepl("cycling", ct)) %>%
                 distinct(ct) %>%
                 pull(ct)
-ct_rm <- c("Plasma cell", cycling_ct)
+ct_rm <- c("Plasma cell", cycling_ct, "Erythrocyte", "Platelets", "Memory B cell", "Fetal HBG+ erythrocyte", "Mast cell")
 projects_keep <- c("GSE120221", "HCA_HematopoieticImmuneCellAtlas", "GSE185381")
 data <- subset(data,
                subset = ct %!in% ct_rm & simplified_ct %!in% simpl_ct_rm & project_id %in% projects_keep)
@@ -72,24 +73,30 @@ data <- subset(data,
 
 
 Subset 3 main lineages
-More information on which cell types belong to each lineage in setup.rmd
+More information on which cell types belong to each lineage in setup.rmd [[../01_setup/setup.rmd]]
+
 ```{r}
 
-lineages <- list(data.lymph = subset(data, subset = lineage == "Lymphoid"),
-                 data.myeloid = subset(data, subset = lineage == "GMP"),
-                 data.erythroid = subset(data, subset = lineage == "MEP"),
-                 data.dendritic = subset(data, subset = lineage == "Dendritic cell")
+lineages <- list(data.lymph = subset(data, subset = ct %in% c("MPP", "CLP", "Naive B cell", "preB cell", "proB cell")),
+                 data.myeloid = subset(data, subset = ct %in% c("MPP", "CMP", "GMP", "Promyeolcyte", "Myelocyte", "Metamyelocyte",
+                                       "S100A+ preNeutrophil")),
+                 data.erythroid = subset(data, subset = ct %in%  c("MPP", "CMP", "MEP", "Early SOX4+ erythroblast", "Late hemoglobin+ erythroblast", "Intermediate EPCAM+ erythroblast")),
+                 data.megakaryocyte = subset(data, subset = ct %in% c("MPP", "CMP", "MEP","Megakaryocyte progenitor")),
+                 data.lymphDC = subset(data, subset = ct %in% c("MPP", "CLP", "pre-pDC (lymphoid origin)", "pDC")),
+                 data.myelpDC = subset(data, subset = ct %in% c("MPP", "CDP", "pre-pDC (myeloid origin)", "pDC")),
+                 data.cDC = subset(data, subset = ct %in% c("MPP", "CDP", "cDC1"))
 )
 
 ```
-
+For eryhtorcyte I do not contain erythrocyte since their position in the UMAP is not clear, see benchling for more information
+cdc2 also weird position in the umap
 
 ## Pseudotime
 We obtain pseudotime with slingshot
 ```{r}
 lineages.sce <- lapply(lineages, function(x) {
   sce <- as.SingleCellExperiment(x)
-  slingshot(sce, clusterLabels = "ct", reducedDim="UMAP")
+  slingshot(sce, clusterLabels = "ct", reducedDim="UMAP", extend='n', start.clus = "MPP",  stretch = 0)
 })
 names(lineages.sce) <- names(lineages)
 
@@ -103,38 +110,123 @@ saveRDS(lineages.sce, "data/processed/lineages_sce.rds", compress = FALSE)
 ## Plot
 Plot UMAP with pseudotime colouring
 ```{r}
+# create all plots with the first lineage
+pdf("results/plots/03_lineages.pdf")
 plot.slingshot <- lapply(lineages.sce, function(x) {
-    plot(reducedDims(x)$UMAP,
-         # col = ,
+    plot_lineage(x)
+})
+dev.off()
+```
+
+
+
+```{r}
+plot.slingshot <- lapply(lineages.sce, function(x) {
+    plot_lineage(x)
+})
+```
+
+
+
+
+
+
+```{r}
+# source("scripts/cell_pal.R")
+#
+# cell_colors_clust <- cell_pal(data$lineage, hue_pal())
+
+colors_lineage <- read.csv("results/tables/lineage_colors.csv")
+lineages_col <- data[["lineage"]] %>%
+  left_join(colors_lineage, by = c("lineage" = "lineage"))
+data <- AddMetaData(data, metadata = lineages_col$color, col.name = "lineage_color")
+```
+
+```{r}
+
+png("results/plots/03_umap_lineage_lines.png", width = 6, height = 6, units = 'in', res = 600)
+
+plot(Embeddings(data, reduction = "umap"),
+         col = data$lineage_color,
          pch=16,
          asp = 1,
-         xlab = "UMAP1",
-            ylab = "UMAP2")
-    lines(SlingshotDataSet(x), lwd=2, type="lineages", col="black")
-    lines(SlingshotDataSet(x)@curves$Lineage1$s, lwd = 2, col = "red")
-})
-plot.slingshot <- lapply(lineages.sce, function(x) {
-    data.plot <- as.data.frame(cbind(reducedDims(x)$UMAP, cell_color=cell_pal(x$ct, hue_pal()) ))
-    ggplot(data.plot, aes(x = UMAP_1, y = UMAP_2)) +
-        geom_point(aes(col = cell_color ), size = 16) +
-        # geom_line(aes(group = slingshot_lineages), size = 0.5) +
-        theme_bw() +
-        theme(legend.position = "none") +
-        xlab("UMAP1") +
-        ylab("UMAP2")
-})
+         xlab = '',
+         ylab = '',
+         xlim = c(-15, 25),
+         ylim = c(-15, 20),
+      xaxt='n', yaxt='n'
+)
+endpoints <- data.frame("UMAP_1" = numeric(), "UMAP_2" = numeric())
+for (i in 1:length(lineages.sce)){
+  lineage_to_plot <- lineages.sce[[i]]
+  # lines(SlingshotDataSet(lineage_to_plot), lwd=2, type = 'lineages', col = 'black')
+  curve <- SlingshotDataSet(lineage_to_plot)@curves$Lineage1$s
+  lines(curve, lwd=2, col = 'black', lty = "longdash")
+  # text(curve[nrow(curve),1] *1.01, curve[nrow(curve),2]*1.01, i, cex = 1.5)
+  endpoints <- rbind(endpoints, curve[nrow(curve),])
+}
+# add text lineages
+text(endpoints[1,1] -3.5, endpoints[1,2], "B cell", cex = 1.5)
+text(endpoints[2,1] +3, endpoints[2,2]-1.5, "Myeloid", cex = 1.5)
+text(endpoints[3,1]-5, endpoints[3,2], "Erythroid", cex = 1.5)
+text(endpoints[4,1]-8.5, endpoints[4,2], "Megakaryocyte", cex = 1.5)
+text(endpoints[5,1] +5, endpoints[5,2]+2, "Lymphoid pDC", cex = 1.5)
+text(endpoints[6,1]+6.5, endpoints[6,2]-2, "Myeloid pDC", cex = 1.5)
+text(endpoints[7,1]+2.5, endpoints[7,2], "cDC", cex = 1.5)
+dev.off()
+
 ```
+Same but in ggplot
 ```{r}
-# create all plots with the first lineage
-plot.slingshot <- lapply(lineages.sce, function(x) {
-  function() {
-    plot_lineage(x)
-  }
-})
+
+colors_lineage <- c("Lymphoid" = "#74D1EA",
+                    "GMP" = "#C0AEE7",
+                    "MEP" = "#F1B2DC",
+                    "Dendritic cell" = "#9DE7D7",
+                    "Early progenitor cells" = "#F2F0A1",
+                    "Stroma" = "#CCC8BF")
+trajectory_names <- c("B cell", "Myeloid", "Erythroid", "Megakaryocyte",  "Myeloid pDC","Lymphoid pDC", "cDC")
+
+dataframe <- Embeddings(data, reduction = "umap")  %>% as.data.frame() %>%
+  mutate(rowname = rownames(.)) %>%
+  left_join(data@meta.data %>% mutate(rowname = rownames(.)), by =c("rowname" = "rowname"))
+endpoints <- data.frame("UMAP_1" = numeric(), "UMAP_2" = numeric())
+curves <- list()
+curves <- data.frame("UMAP_1" = numeric(), "UMAP_2" = numeric(), "lineage" = character())
+for (i in seq_along(lineages.sce)){
+  lineage_to_plot <- lineages.sce[[i]]
+  curve <- SlingshotDataSet(lineage_to_plot)@curves$Lineage1$s
+  curves <- rbind(curves, cbind(curve, lineage = rep(names(lineages.sce)[i], nrow(curve))))
+  # names(curves)[i] <- names(lineages.sce)[i]
+  endpoints <- rbind(endpoints, curve[nrow(curve),])
+}
+colnames(endpoints) <- c("UMAP_1", "UMAP_2")
+umap_lineages_plot <- dataframe %>%
+  ggplot(aes(x=UMAP_1, y=UMAP_2)) +
+  geom_point(aes(col = lineage), size = 0.5) +
+  theme_bw() +
+  scale_color_manual(values = colors_lineage, breaks = names(colors_lineage) ) +
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  xlim(-5, 15) +
+  ylim(-15, 20) +
+    xlab("") +
+    ylab("") +
+    theme(
+            axis.text = element_blank(),
+            axis.title = element_blank(),
+            axis.ticks = element_blank(),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            panel.border = element_blank(),
+            panel.background = element_blank()) +
+    geom_path(data = curves, aes(x = as.numeric(UMAP_1), y = as.numeric(UMAP_2), group = factor(lineage))) +
+  # geom_point(data = endpoints, aes(x = as.numeric(UMAP_1), y = as.numeric(UMAP_2)), size = 3) +
+  geom_label_repel(data = endpoints, aes(x = as.numeric(UMAP_1), y = as.numeric(UMAP_2), label = trajectory_names ) )
+
+umap_lineages_plot
+
+ggsave("results/plots/03_umap_lineage.png", width = 6, height = 6, units = 'in', dpi = 600)
 ```
-
-
-
 
 
 
@@ -143,7 +235,7 @@ plot.slingshot <- lapply(lineages.sce, function(x) {
 Create function that runs everything up to Res
 
 ```{r}
-run_lamian <- function(sce, data, permuiter = 5){
+run_lamian <- function(sce, data, permuiter = 20){
   cnt <- counts(sce)
   # select one lineage
   pt <- sce$slingPseudotime_1
@@ -184,7 +276,7 @@ run_lamian <- function(sce, data, permuiter = 5){
   sex_design %>% select(intercept, sex_bin) -> sex_design
   # generate expression matrix
   # only variable features
-  data_sub <- FindVariableFeatures(data_sub, selection.method = "vst", nfeatures = 2000)
+  data_sub <- FindVariableFeatures(data_sub, selection.method = "vst", nfeatures = 5000) # number of genes that will be tested
   var_genes <- VariableFeatures(data_sub)
   GetAssayData(data_sub)[var_genes,]-> expr
   filtr_expr <- expr
@@ -210,12 +302,23 @@ run_lamian <- function(sce, data, permuiter = 5){
 
 Run Lamian for each lineage
 ```{r}
-Res.list <- mapply(run_lamian, lineages.sce, lineages)
+Res <- mapply(run_lamian, lineages.sce[-1], lineages[-1])
 ```
 
 save list
 ```{r}
-saveRDS(Res.list, "data/processed/Res_list.rds", compress = FALSE)
+# split the matrix from mapply into a list for every trajectory
+Res.list <- split(Res, rep(1:ncol(Res), each =nrow(Res)))
+names(Res.list) <- colnames(Res)
+# reassign names to every element of the list
+Res_names <- c("statistics", "parameter", "llr.overall", "knotnum","pseudotime", "design", "cellanno", "expr",
+           "test.type","test.method", "testvar")
+Res.list <- lapply(Res.list, function(x) {
+    names(x) <- Res_names
+    return(x)
+})
+rm(Res)
+saveRDS(Res.list, "data/processed/Res_list.rds")
 ```
 
 
@@ -228,42 +331,82 @@ lamian_downstream <- function(Res) {
     stat <- stat[order(stat[, 1], -stat[, 3]),]
     # genes with FDR.overall < 0.05 cutoff
     diffgene <- rownames(stat[stat[, grep ('^fdr.*overall$', colnames(stat))]< 0.05, ])
+    if (length(diffgene) <3) {
+        print( paste("No genes with FDR.overall < 0.05", length(diffgene)))
+        return(Res)
+    }
+    print( paste("Number of genes with FDR.overall < 0.05", length(diffgene)))
     # population level stats
     Res$populationFit <- getPopulationFit(Res, gene = diffgene, type = 'variable')
     # group difference for a given covariate
     Res$covariateGroupDiff <- getCovariateGroupDiff(testobj = Res, gene = diffgene)
     # cluster genes
-    Res$cluster <- clusterGene(Res, gene = diffgene, type = 'variable', k = 5)
+    # Res$cluster <- clusterGene(Res, gene = diffgene, type = 'variable', k=2)
     return(Res)
 }
 ```
+No funciona con menos de 3 genes
+
+
 ```{r}
-stat <- Res$statistics
-stat <- stat[order(stat[, 1], -stat[, 3]),]
-# genes with FDR.overall < 0.05 cutoff
-diffgene <- rownames(stat[stat[, grep ('^fdr.*overall$', colnames(stat))]< 0.05, ])
-length(diffgene)
+Res.down <- lapply(Res.list, lamian_downstream)
 ```
+
+
+
+
+
+
+
 
 
 
 Estimate at the population level
-```{r}
-Res$populationFit <- getPopulationFit(Res, gene = diffgene, type = 'variable')
-```
+
+
+
 Group difference for a given covariate
+
 ```{r}
-Res$covariateGroupDiff <- getCovariateGroupDiff(testobj = Res, gene = diffgene)
-Res$cluster <- clusterGene(Res, gene = diffgene, type = 'variable', k = 5) # change k because if very few genes
+# Res$covariateGroupDiff <- getCovariateGroupDiff(testobj = Res, gene = diffgene)
+#
+# Res$cluster <- clusterGene(Res, gene = diffgene, type = 'variable', k = 5) # change k because if very few genes
+
 ```
+
 I had only 4 genes when testing with 5 clusters, so I changed it to k=2
 
+
 save rds
+
 ```{r}
-saveRDS(Res, file = 'Res.rds')
+
+# ()
+# saveRDS(Res, file = 'Res.rds')
+
 ```
 
+# choose a Res
+```{r}
+Res <- Res.down$data.lymphDC
+# floor(Res$pseudotime * 1000) -> Res$pseudotime
 
+```
+```{r}
+
+stat <- Res$statistics
+
+stat <- stat[order(stat[, 1], -stat[, 3]),]
+
+# genes with FDR.overall < 0.05 cutoff
+
+diffgene <- rownames(stat[stat[, grep ('^fdr.*overall$', colnames(stat))]< 0.05, ])
+
+length(diffgene)
+
+Res$populationFit <- getPopulationFit(Res, type = 'variable')
+
+```
 
 plot expression values
 there is an issue with the colours
@@ -273,7 +416,7 @@ assignInNamespace("plotXDEHm", mod_plotXDEHm, ns='Lamian')
 
 this is a hack to get around the issue
 ```{r}
-source("03_TrajectoryAnalysis/mod_plotXDEHm.R")
+source("scripts/mod_plotXDEHm.R")
 environment(mod_plotXDEHm) <- asNamespace('Lamian')
 assignInNamespace("plotXDEHm", mod_plotXDEHm, ns='Lamian')
 mod_plotXDEHm(
@@ -292,7 +435,7 @@ source("mod_plotClusterMeanAndDiff.R")
 environment(mod_plotClusterMeanAndDiff) <- asNamespace('Lamian')
 assignInNamespace("plotClusterMeanAndDiff", mod_plotClusterMeanAndDiff, ns='Lamian')
 ```{r}
-source("03_TrajectoryAnalysis/mod_plotClusterMeanAndDiff.R")
+source("scripts/mod_plotClusterMeanAndDiff.R")
 environment(mod_plotClusterMeanAndDiff) <- asNamespace('Lamian')
 assignInNamespace("plotClusterMeanAndDiff", mod_plotClusterMeanAndDiff, ns='Lamian')
 mod_plotClusterMeanAndDiff(Res) # mean doesn't work
@@ -300,13 +443,108 @@ mod_plotClusterMeanAndDiff(Res) # mean doesn't work
 plotClusterDiff(Res, gene = diffgene)
 ```
 
-It seems like only cluster 8 is consistently differentially expressed
 
 ```{r}
 # plot Gene
-plotGene(Res, gene = diffgene[1:6], variable="sex_bin")
-plotGeneCellAndPopulation(Res, gene = diffgene[1:6], type="variable")
+# add this before pred + i[ if error comes up, use debugging, i'll modify the function to fix it.
+#  populationFit <- getPopulationFit(testObj, gene, type = testObj$test.type, num.timepoint = length(pseudotime))
+# pseudotime <- floor((pseudotime )/max(pseudotime)*length(pseudotime))
+# pseudotime <- replace(pseudotime, pseudotime==0, 1)
+# Res$pseudotime[] <- floor(Res$pseudotime * 10000)
+Res$populationFit <- getPopulationFit(Res, gene = diffgene, type = 'variable')
+
+plotGene(Res, gene = diffgene, variable="sex_bin") -> plot_gene_sample
+
 ```
 
+```{r}
+plotGeneCellAndPopulation(Res, gene = diffgene, type="variable", free.scale = FALSE) -> plot_gene
+```
+
+
+```{r}
+# change size of axis text
+plot_gene + theme(axis.title = element_text(size = 15),
+                  axis.text = element_text(size = 15)) +
+        # change legend text
+        scale_fill_discrete(breaks = c("Female", "sex_bin_1"),
+                           labels = c("Female", "Male")) -> plot_gene
+
+```
+
+```{r}
+x_y_gene_expr_pop_plot <- plotGeneCellAndPopulation(Res.list$data.lymphDC, gene = c("RPS4X", "DDX3Y"), type="variable", free.scale = TRUE) +
+        scale_color_manual(values = c("sex_bin_0"="#8A69D4", "sex_bin_1"="#FFD635"),
+                           labels = c("sex_bin_0"="Female", "sex_bin_1"="Male")) +
+        labs(color="Sex") +
+  # remove x axis ticks
+    theme(  axis.ticks.x = element_blank(),
+            axis.text.x = element_blank())
+xlim(xmin = 0, xmax = 1) +
+x_y_gene_expr_pop_plot
+```
+
+
+ # add this before pred + i[ if error comes up, use debugging, i'll modify the function to fix it.
+ (not this) populationFit <- getPopulationFit(testObj, gene, type = testObj$test.type, num.timepoint = length(pseudotime))
+ pseudotime <- floor((pseudotime )/max(pseudotime)*length(pseudotime))
+ pseudotime <- replace(pseudotime, pseudotime==0, 1)
+
+```{r}
+# plot Gene
+
+ Res$pseudotime[] <- floor(Res$pseudotime * 10000)
+ Res$populationFit <- getPopulationFit(Res, gene = diffgene, type = 'variable', num.timepoint = length(Res$pseudotime))
+plotGene(Res, gene = diffgene, variable="sex_bin") -> plot_gene_sample
+
+
+
+```
+```{r}
+# change size of axis text
+plot_gene_sample_col <- plot_gene_sample +
+        scale_color_manual( values = c("0"="#8A69D4", "1"="#FFD635"),
+                           labels = c("0"="Female", "1"="Male")) +
+        labs(color="Sex") +
+  # remove x axis ticks
+    theme(  axis.ticks.x = element_blank(),
+            axis.text.x = element_blank())
+
+```
+
+```{r}
+data_lineage <- data.frame(Pseudotime = lineages.sce$data.lymphDC$slingPseudotime_1, Lineage = "Lymphoid pDC", ct = lineages.sce$data.lymphDC$ct)
+lineage_pseudotime_plot <-ggplot(data_lineage, aes(x = Pseudotime, y = Lineage, color = ct)) +
+  geom_point(position = "jitter") +
+  scale_color_discrete(breaks = c("MPP", "CLP", "pre-pDC (lymphoid origin)", "pDC")) +
+  theme_classic() +
+  theme(axis.text.x =element_blank(), axis.ticks.x = element_blank()) +
+  labs(x = "Pseudotime", y = "Lineage", color = "Cell type")
+```
+
+```{r}
+fig_4 <- umap_lineages_plot+
+  plot_annotation(caption = "Figure 4. Slingshot accurately reconstructs the seven differentiation trajectories. UMAP projection with overlayed lineage curves (black). Cells are colored according to major lineages (See Methods).") &
+    theme(plot.caption = ggtext::element_textbox_simple(size = 9))
+ggsave("results/plots/04_fig4.png", fig_4, width = 6.2, height = 6, units = 'in', dpi = 600)
+saveRDS(fig_4, "results/plots/04_fig4.rds")
+```
+
+```{r}
+layout <-"
+AAABBB
+AAACCC
+AAACCC
+"
+
+fig_5 <- patchwork::wrap_elements(full = ~ plot_lineage(lineages.sce$data.lymphDC)) + lineage_pseudotime_plot +plot_gene_sample_col + plot_layout(design = layout)
+
+fig_5 <- fig_5 + patchwork::plot_annotation(tag_levels = 'A',
+                                   caption = "Figure 5. Sex-chromosomes genes show differential expression along lineage trajectories. A. Lineage trajectory of lymphoid pDCs on UMAP projection. Cells colored according to cell type. Lines correspond to clusters/cell type (black) and slingshot curve (red) B. Cell distribution along pseudotime for the lymphoid pDC lineage. C. Sample-fitted scaled gene expression patterns of DDX3Y and RPS4X along the differentiation lineage.") &
+                            theme(plot.caption = ggtext::element_textbox_simple(size = 11))
+
+ggsave("results/plots/04_fig5.png", fig_5, width = 17, height = 8, units = 'in', dpi = 600)
+saveRDS(fig_5, "results/plots/04_fig5.rds")
+```
 
 

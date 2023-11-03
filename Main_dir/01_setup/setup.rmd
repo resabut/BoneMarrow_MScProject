@@ -13,7 +13,8 @@ library(Seurat)
 library(ggplot2)
 library(patchwork)
 library(ggridges)
-source("01_setup/SexAssignment.R")
+library(gtExtras)
+source("scripts/SexAssignment.R")
 ```
 
 # Download data
@@ -22,10 +23,10 @@ It is v2 of the bone marrow atlas from DISCO.
 # download from url
 url <- "https://zenodo.org/record/7615517/files/disco_bone_marrow_v2.0.rds?download=1"
 dir.create("data", showWarnings = FALSE)
-# increase timeout to 600 seconds
+# increase timeout to 10000 seconds
 options(timeout = 10000)
 # download file
-download.file(url, destfile = "data/disco_bone_marrow_v2.0.rds")
+# download.file(url, destfile = "data/disco_bone_marrow_v2.0.rds")
 ```
 If it fails, manual download
 
@@ -44,13 +45,13 @@ data@assays$RNA@data <- data@assays$RNA@counts
 
 Add variable features, scale data and run PCA
 ```{r}
-data <- FindVariableFeatures(data)
+data <- FindVariableFeatures(data, selection.method = "vst", nfeatures = 2000)
 data <- ScaleData(data, verbose = FALSE ) # scales data only for variable features
 data <- RunPCA(data, verbose = FALSE)
 ```
 
 ## Add extra metadata
- Lineages
+Group cell types into lineages.
 ```{r}
 # lineages
 lymphoid_lineage <- c("Naive B cell", "Memory B cell", "Plasma cell", "preB cell", "preB cell (cycling)", "proB cell",
@@ -79,13 +80,13 @@ data <- AddMetaData(data, metadata = lineages, col.name = "lineage")
 
 ```
 
-Simplified cell types
+Group cell types into simplified cell types
 ```{r}
 # simplified_ct
 b_cells <- c("Naive B cell", "Memory B cell", "Plasma cell", "preB cell", "preB cell (cycling)", "proB cell",
              "proB cell (cycling)", "Plasma cell")
 t_nk_cells<- c("Naive CD8 T cell", "Effector/Memory CD4 T cell", "Naive CD4 T cell",
-             "GZMK+ CD8 T cell", "Gamma-delta T cell", "IFN-activated T cell", "Treg", "GZMB+ CD8 T cell", "MAIT",
+               "GZMK+ CD8 T cell", "Gamma-delta T cell", "IFN-activated T cell", "Treg", "GZMB+ CD8 T cell", "MAIT",
                "T/NK cell (cycling)","CD16+ NK", "Tissue-resident NK cell", "CD56+ NK","ILC")
 erythrocytes <- c("Early SOX4+ erythroblast", "Late hemoglobin+ erythroblast", "Fetal HBG+ erythrocyte",
                   "Intermediate EPCAM+ erythroblast", "Erythrocyte")
@@ -99,61 +100,138 @@ stroma <- c("Fibroblast", "Mesenchymal stromal cell", "Osteoclast")
 
 # add a column with the simplified cell type name
 simplified_ct <- ifelse(data$ct %in% b_cells, "B cells",
-                      ifelse(data$ct %in% t_nk_cells, "T/NK cells",
-                                ifelse(data$ct %in% erythrocytes, "Erythrocytes",
-                                        ifelse(data$ct %in% monocytes, "Monocytes",
-                                                ifelse(data$ct %in% granulocyte, "Granulocytes",
-                                                        ifelse(data$ct %in% dendritic_cells, "Dendritic cells",
-                                                                ifelse(data$ct %in% Mk, "Mk",
-                                                                        ifelse(data$ct %in% progenitor_cells, "Progenitor cells",
-                                                                                ifelse(data$ct %in% stroma, "Stroma",
-                                                                                    "Unknown")))))))))
+                        ifelse(data$ct %in% t_nk_cells, "T/NK cells",
+                               ifelse(data$ct %in% erythrocytes, "Erythrocytes",
+                                      ifelse(data$ct %in% monocytes, "Monocytes",
+                                             ifelse(data$ct %in% granulocyte, "Granulocytes",
+                                                    ifelse(data$ct %in% dendritic_cells, "Dendritic cells",
+                                                           ifelse(data$ct %in% Mk, "Mk",
+                                                                  ifelse(data$ct %in% progenitor_cells, "Progenitor cells",
+                                                                         ifelse(data$ct %in% stroma, "Stroma",
+                                                                                "Unknown")))))))))
 # add to seurat object
 data <- AddMetaData(data, metadata = simplified_ct, col.name = "simplified_ct")
 
 ```
 
 
-## Predict sex
+# Predict sex
 
+First run SexAssign, a function that is able to assign sex to samples
 ```{r}
 # Run SexAssign
 sex_assign_out <- SexAssign(data = data,
-                            sex_col = "gender",
-                            sample_col = "sample",
+                            sex_col = "gender", # previous sex annotation
+                            sample_col = "sample", # sample column
                             do.report = TRUE,
                             assay = "RNA",
-                            min.percent = 0.7,
-                            min.ratio = 2
+                            min.percent = 0.7, # minimum percentage of cells to be considered of one sex
+                            min.ratio = 2 # mininum ratio between the sexes for it to be considered of the sex in the numerator
 )
 ```
+If some "features" can't be found, it means that these genes aren't in the gene expression matrix.
 
-Explore the results
+Explore the output
 ```{r}
-# Table
+# Table per sample
 sex_assign_out[[2]]
-# look at inconclusive samples
+# Focus on the inconclusive samples
 sex_assign_out[[2]] %>%
-    filter(sample_sex == "inconclusive")
+        filter(sample_sex == "inconclusive")
 # Frequency plot
-sex_assign_out[[3]]
+sex_assign_out[[3]] -> freq_SexAssign_plot
+freq_SexAssign_plot
 # sex genes heatmap
-sex_assign_out[[4]]
+sex_assign_out[[4]] -> heatmap_SexAssign_plot
+heatmap_SexAssign_plot
 ```
 
 
-New object with Predicted_sex
+Save the new object as data
 ```{r}
 data <- sex_assign_out[[1]]
+save <- sex_assign_out[-1]
+saveRDS(save, "results/output_obj/sex_assign_out.rds")
+rm(save)
+```
+
+Compare sex annotation with prediction.
+```{r}
+prev_sex <- data@meta.data %>%
+        distinct(sample, gender) %>%
+        dplyr::count(gender) %>%
+        mutate(var = "Provided\nsex annotation") %>%
+        dplyr::rename(Predicted_sex = gender) %>%
+        mutate( Predicted_sex = ifelse(Predicted_sex == "", "Not provided", Predicted_sex))
+Pred_sex <- data@meta.data %>%
+        distinct(sample, Predicted_sex) %>%
+        dplyr::count(Predicted_sex) %>%
+        mutate(var="SexAssign\nprediction")
+sex_annot <- bind_rows(prev_sex, Pred_sex)
+sex_annot_bar <- sex_annot %>%
+        ggplot( aes(fill=factor(Predicted_sex, c("F", "Not provided", "inconclusive", "M")), y=n, x=var, label = n)) +
+        geom_bar(position="fill", stat="identity") +
+        geom_text(size = 8, position = position_fill(vjust = 0.5)) +
+        # change text
+        labs(x = "",
+             y = "Proportion of samples",
+             # title = "Sex annotation vs. SexAssign prediction",
+             fill = "Sample sex") +
+        theme_classic() +
+        scale_fill_manual(values = c("M" = "gold", "F" = "purple", "Not provided" = "darkgray", "inconclusive" = "lightgray"),
+                          labels = c( "inconclusive" = "Inconclusive", "F" = "Female", "M" = "Male"))
+        # change text size
+        # theme(text = element_text(size=20),
+        #       axis.text.x = element_text(size = 15),
+        #       axis.text.y = element_text(size = 20),
+        #       legend.text = element_text(size = 20),
+        #       legend.title = element_text(size = 20),
+        #       plot.title = element_text(size = 20, face = "bold"))
+
+mismatch_barplot <- as.data.frame(sex_assign_out[[2]]) %>%
+  # make match column factor
+    mutate(match = factor(match, c("New_annotation", "Mismatch",  "Match" ))) %>%
+  dplyr::count(match) %>%
+  mutate(var="") %>%
+  ggplot(aes(fill=factor(match, c("Match", "Mismatch", "New_annotation")), x=var, y=n, label = n)) +
+    geom_bar(position="fill", stat="identity") +
+    geom_text(size = 8, position = position_fill(vjust = 0.5)) +
+    # change text
+    labs(x="",
+         y="Proportion of samples",
+         # title = "Mismatches in sample sex",
+         fill = "") +
+    theme_classic() +
+    scale_fill_manual(values = c("Match" = "#90ee90", "Mismatch" = "#ff0033", "New_annotation" = "#4169E1"),
+                      labels = c("New_annotation" = "New annotation"))
+
+        # theme(text = element_text(size=20),
+        #       axis.text.x = element_text(size = 20),
+        #       axis.text.y = element_text(size = 20),
+        #       legend.text = element_text(size = 20),
+        #       legend.title = element_text(size = 20),
+        #       plot.title = element_text(size = 20, face = "bold"))
+
+
+
+sex_annot_bar + mismatch_barplot
+```
+
+# Plot the data
+## ggextra
+```{r}
+gt_plt_summary(data@meta.data)
+
 ```
 
 
-# Plot the data
+
 
 ## UMAP
 ```{r}
 # create base plot
 plot1 <- DimPlot(data, group.by ="ct", raster = FALSE) + NoLegend()
+plot1
 # add labels in color
 plot2 <- LabelClusters(plot1, id="ct", color="black", size = 5, repel=T, max.overlaps=Inf) # ident == ct
 plot2
@@ -169,50 +247,88 @@ Create summary table
 ```{r}
 # number of samples per project
 sample_per_proj <- data@meta.data %>%
-                    distinct(project_id, sample, age) %>%
-                    group_by(project_id) %>%
-                    summarise(n_samples = n(),
-                              mean_age = mean(age),
-                              sd_age = sd(age),
-                              min_age = min(age),
-                              max_age = max(age),)
+        distinct(project_id, sample, age) %>%
+        group_by(project_id) %>%
+        summarise(n_samples = n(),
+                  mean_age = mean(age),
+                  sd_age = sd(age),
+                  min_age = min(age),
+                  max_age = max(age),)
 sample_per_proj
 ```
 
-Plots
+### age distribution plots
 ```{r}
 # per project
 age_distr_proj <- data@meta.data %>%
-                    ggplot(aes(x = age, y=..density.., fill = factor(project_id))) +
-                    geom_density(alpha = 0.5) +
-                    labs(x = "Age", y = "Density",
-                        title = "Age distribution for every project in DISCO Bone Marrow Atlas v2")
+        ggplot(aes(x = age, y=..density.., fill = factor(project_id))) +
+        geom_density(alpha = 0.5) +
+        labs(x = "Age", y = "Density",
+             title = "Age distribution for every project in DISCO Bone Marrow Atlas v2")
 age_distr_proj
 
 # per Predicted_sex
 age_distr_sex <- data@meta.data %>%
-                    ggplot(aes(x = age, y=..density.., fill = factor(Predicted_sex))) +
-                    geom_density(alpha = 0.5) +
-                    labs(x = "Age", y = "Density",
-                        title = "Age distribution for Males and Females in DISCO Bone Marrow Atlas v2")
+        ggplot(aes(x = age, y=..density.., fill = factor(Predicted_sex))) +
+        geom_density(alpha = 0.5) +
+        labs(x = "Age", y = "Density",
+             title = "Age distribution for Males and Females in DISCO Bone Marrow Atlas v2")
 age_distr_sex
 
 # per Predicted_sex and faceted by project
 age_distr_sex_proj <- data@meta.data %>%
-                    ggplot(aes(x = age, y=..density.., fill = factor(Predicted_sex))) +
-                    geom_density(alpha = 0.5) +
-                    facet_wrap(~project_id) +
-                    labs(x = "Age", y = "Density",
-                        title = "Age distribution for Males and Females in DISCO Bone Marrow Atlas v2")
+        ggplot(aes(x = age, y=..density.., fill = factor(Predicted_sex))) +
+        geom_density(alpha = 0.5) +
+        facet_wrap(~project_id) +
+        labs(x = "Age", y = "Density",
+             title = "Age distribution for Males and Females in DISCO Bone Marrow Atlas v2")
 age_distr_sex_proj
 age_distr_sex_proj <- data@meta.data %>%
-                    ggplot(aes(x = age, y=project_id, fill = factor(Predicted_sex))) +
-                    geom_density_ridges(alpha = 0.5, rel_min_height = 0.01) +
-                    labs(x = "Age", y = "Density",
-                        title = "Age distribution for Males and Females in DISCO Bone Marrow Atlas v2 per project",
-                        fill = "Sex")
+        ggplot(aes(x = age, y=project_id, fill = factor(Predicted_sex))) +
+        geom_density_ridges(alpha = 0.5, rel_min_height = 0.01) +
+        labs(x = "Age", y = "Density",
+             title = "Age distribution for Males and Females in DISCO Bone Marrow Atlas v2 per project",
+             fill = "Sex")
 age_distr_sex_proj
 
+```
+
+# Patchwork make figures
+
+```{r}
+fig2_patchwork <- (heatmap_SexAssign_plot  + mismatch_barplot )/ freq_SexAssign_plot
+fig2_patchwork + plot_annotation(
+        title = "Sex assignment results for DISCO Bone Marrow Atlas v2",
+        subtitle = "Done with SexAssign based on cellXY",
+        caption = "some caption"
+)
+```
+
+```{r}
+
+
+supl_fig_heatmap_sex <- sex_assign_out[[4]] +
+labs(
+     caption = "Suplementary Figure 1. Gene expression corroborates SexAssign+cellXY sex prediction. Genes are the ones used by cellXY models. Missing genes are not present in the gene expression matrix. Samples have been ordered by SexAssign prediction (Female, Male, and Inconclusive).") +
+               theme(plot.title = element_text(size = 15),
+                     plot.margin = margin(l=10, r = 20),
+                     plot.caption = ggtext::element_textbox_simple(
+                       size = 10, hjust = 0, margin = margin(t = 3, r = 0, b = 0, l = 0))) +
+  plot_annotation(title = "Heatmap of mean expression of X and Y genes per sample in DISCO Bone Marrow Atlas v2.")
+supl_fig_heatmap_sex
+ggsave("results/plots/01_supl_01_heatmap.png", supl_fig_heatmap_sex, dpi = 600, height = 9, width = 12)
+
+```
+
+figure 1 about mismatches
+```{r}
+fig1 <- patchwork::wrap_elements(sex_annot_bar) + patchwork::wrap_elements(mismatch_barplot) +
+  plot_annotation( tag_levels = "A",
+  caption = "Figure 2. SexAssign effectively annotates sex and reveals dubious sex annotation in the DISCO Bone Marrow Atlas v2. A. Sex sample metadata from the provided sex annotation and the sex prediction by SexAssign. B. Overlap of the two annotations.") &
+  theme( plot.caption = ggtext::element_textbox_simple(size = 10), plot.title =ggtext::element_textbox_simple(size = 1))
+fig1
+
+ggsave("results/plots/01_fig_02_mismatches.png", fig1, dpi = 600, height = 6, width = 13)
 ```
 
 
@@ -238,10 +354,10 @@ ggsave("results/plots/01_umap_ct_black.png", plot3, dpi=600)
 ggsave("results/plots/01_age_distr_proj.png", age_distr_proj, dpi=600)
 ggsave("results/plots/01_age_distr_sex.png", age_distr_sex, dpi=600)
 ggsave("results/plots/01_age_distr_sex_proj.png", age_distr_sex_proj, dpi=600)
+ggsave("results/plots/01_mismatch_barplot.png", width = 10, height = 6,mismatch_barplot, dpi=600)
 
-
-write.table(sex_assign_out[[2]], file = "results/tables/01_sample_sex_res.txt", sep = "\t", quote = FALSE, row.names = FALSE)
-write.table(sample_per_proj, file = "results/tables/01_sample_per_proj.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+write.table(sex_assign_out[[2]] , file = "results/tables/01_sample_sex_res.csv", sep = ",", quote = FALSE, row.names = FALSE)
+write.table(sample_per_proj, file = "results/tables/01_sample_per_proj.csv", sep = ",", quote = FALSE, row.names = FALSE)
 ```
 ```{r}
 # save the session info

@@ -81,6 +81,7 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
     print("Generating report...")
     # table
     sex_sample_data <- sex_assigned_df
+
     # make frequency plot
     bar_data <- as.data.frame(table(unlist(data.seu[["Pred_cell_sex"]]),
                                     unlist(data.seu[[sample_col]])))
@@ -89,19 +90,24 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
       geom_col(position = "fill") +
       # set colors
       scale_fill_manual(values = c("purple", "yellow", "gray")) +
+      # x axis labels at 90 degrees
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
       # add table with sex assignment
       labs(x = "Sample", y = "Proportion of cells", fill = "Cell sex") +
       theme_bw()
+
     if (label_plot){
         freq_plot <- freq_plot + geom_text(aes(label = round(Count, 2)), position = position_fill(vjust = 0.5))
         }
     # print some summary stats
     match_sum <- sex_sample_data %>% dplyr::ungroup() %>% dplyr::count(match)
     print(match_sum)
+
     if(match_sum[which(match_sum == "Mismatch"), 2] > 0){ # if there are mismatches
       print(paste("Out of", nrow(sex_sample_data), "samples in total,", match_sum[which(match_sum == "Mismatch"), 2],
                 "sample(s) sex prediction did not match the provided annotation!!!!"))
     }
+
     # make a heatmap
     if(do.heatmap){
     # genes located in the X chromosome that have been reported to escape
@@ -137,11 +143,12 @@ SexAssign <- function(data, genome = "Hs", sex_col = "sex", sample_col = "sample
     # remove features with 0 expression in all samples
     mean_gene_expr <- rowSums(sample.averages[[assay]]@scale.data)
     var_genes <- names(mean_gene_expr[mean_gene_expr != 0])
+
     # get M - F sample order for heatmap
     sex_sample_data %>%
       arrange(sample_sex) %>%
       pull(sample) -> sample_order
-    # order
+    # order by sex prediction
     Idents(sample.averages) <- factor(sample.averages@active.ident, levels = sample_order)
     # plot heatmap
     DoHeatmap(sample.averages, features = var_genes, size = 2, draw.lines = FALSE,

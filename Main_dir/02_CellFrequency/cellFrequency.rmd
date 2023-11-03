@@ -15,8 +15,11 @@ library(patchwork)
 library(dittoSeq)
 library(speckle)
 library(limma)
+library(scales)
 `%!in%` <- Negate('%in%')
+source("scripts/cell_pal.R")
 ```
+
 
 
 
@@ -54,29 +57,52 @@ dittoBarPlot(data, var="ct", group.by="sample",
 freq_project
 
 # cell proportions by sex, simplified cell types
+sex_labels <- c("Female", "Male")
+names(sex_labels) <- c("F", "M")
 dittoBarPlot(data, var="simplified_ct", group.by="sample",
              split.by = "Predicted_sex", split.adjust = list(scales = "free")) +
     # change axis name
     labs(x = "Sample", y = "Cell  proportion", title = "Simplified cell type by sample and sex") +
     # all columns, same width
     facet_null() +
-    facet_grid(~Predicted_sex, scale="free_x", space="free_x") +
+    facet_grid(~Predicted_sex, scale="free_x", space="free_x",
+               labeller=labeller(Predicted_sex=sex_labels)) +
     # change legend name
     scale_fill_discrete(name = "Cell types") -> s_freq_sex
 s_freq_sex
 
 
 # cell proportions by project, , simplified cell types
+proj_labels <- c("GSE120221", "GSE18351", "HCA_Immune")
+names(proj_labels) <- c("GSE120221", "GSE185381", "HCA_HematopoieticImmuneCellAtlas")
 dittoBarPlot(data, var="simplified_ct", group.by="sample",
              split.by = "project_id", split.adjust = list(scales = "free")) +
     # change axis name
     labs(x = "Sample", y = "Cell  proportion", title = "Simplified cell type by sample and project") +
     # all columns, same width
     facet_null() +
-    facet_grid(~project_id, scale="free_x", space="free_x") +
+    facet_grid(~project_id, scale="free_x", space="free_x",
+               labeller =labeller(project_id = proj_labels)) +
     # change legend name
     scale_fill_discrete(name = "Cell types") -> s_freq_project
 s_freq_project
+
+# double facet
+data@meta.data %>%
+  group_by(sample, Predicted_sex, project_id, simplified_ct) %>%
+    summarise(n = n()) %>%
+  group_by(sample)  %>%
+  mutate(prop = n / sum(n)) %>%
+  ggplot(aes(x = sample, y = prop, fill = simplified_ct)) +
+  geom_bar(stat = "identity", scales = "free") +
+    # change axis name
+    labs(x = "Sample", y = "Cell  proportion", title = "Simplified cell type by sample and project") +
+    # all columns, same width
+    # facet_null() +
+    facet_grid(rows=vars(project_id), cols=vars(Predicted_sex), scale="free_x", space="free_x") +
+    # change legend name
+    scale_fill_discrete(name = "Cell types") -> a
+a
 
 ```
 
@@ -102,7 +128,43 @@ design <- model.matrix(~ 0 + Predicted_sex + project + age , data = sample_meta.
 # to compare M vs F
 mycontr <- makeContrasts(Predicted_sexM-Predicted_sexF, levels = design)
 ```
+## explore variance
+```{r}
+# explore variance
 
+cellfreq <- props$Proportions %>%
+        as.data.frame() %>%
+        tidyr::pivot_wider(names_from = "clusters",
+                    values_from = "Freq",
+                    ) %>%
+        tibble::column_to_rownames("sample")
+sample_info <- meta.data %>%
+  distinct(Predicted_sex, sample, project_id, age) %>%
+  mutate(project = gsub("-", "_",
+                        project_id)) %>%
+        arrange(sample)
+
+
+
+adonis.res <- vegan::adonis2(cellfreq ~ Predicted_sex + project + age, data = sample_info, method = "euclidean", permutations = 999)
+variance_plot <- adonis.res %>%
+        mutate(rownames = rownames(adonis.res)) %>%
+        filter(rownames != "Total") %>%
+ggplot(
+       aes(fill=rownames, y=R2, x= 1)) +
+        geom_bar(stat="identity", position = "stack") +
+  coord_flip() +
+theme_classic() +
+  labs(x="", y="Variance explained", fill="Variables",
+       title = "Proportion of cell type frequency variance among samples") +
+
+  scale_fill_manual(labels = c("age" = "Age", "Predicted_sex"="Sex", "project"="Project", "Residual" = "Residual"),
+                    values = c("age" = "#ff7f00", "Predicted_sex"="#836fff", "project"="#00ff7f", "Residual" = "#ff4500")) +
+ theme(
+              axis.text.y =element_blank(),
+              axis.ticks.y = element_blank(),
+  )
+```
 ```{r}
 res <- propeller.ttest(props,
                        design,
@@ -112,6 +174,39 @@ res <- propeller.ttest(props,
                        sort=TRUE
 )
 res
+```
+
+```{r}
+# prepare input
+meta.data <- data@meta.data
+
+# get proportions
+props <- getTransformedProps(
+        clusters = meta.data$ct,
+        sample = meta.data$sample,
+        transform = "logit"
+)
+
+# create design matrix
+sample_meta.data <- meta.data %>%
+  distinct(Predicted_sex, sample, project_id, age) %>%
+  mutate(project = gsub("-", "_", project_id))
+rownames(sample_meta.data) <- sample_meta.data$sample
+design <- model.matrix(~ Predicted_sex + age , data = sample_meta.data)
+# to compare M vs F
+# random effect
+dupcor <- duplicateCorrelation(props$TransformedProps, design, block = sample_meta.data$project)
+```
+
+
+
+```{r}
+#fitting the model
+fit1 <- lmFit(props$TransformedProps, design, block = sample_meta.data$project, correlation = dupcor$consensus)
+#fitting the model
+fit1 <- eBayes(fit1)
+summary(decideTests(fit1))
+topTable(fit1, coef=1) %>% mutate(ct = rownames(.))
 ```
 
 
@@ -133,15 +228,17 @@ res$sign <- ifelse(res$P.Value < 0.05, "**",
 Import metadata from the Seurat object to the result table
 ```{r}
 data@meta.data %>%
-        distinct(ct, lineage) -> ct_lineage
+        distinct(ct, lineage, simplified_ct) -> ct_lineage
 res %>%
         left_join(ct_lineage, by = c("ct" = "ct")) -> res
+
 
 ```
 ## Dotplot
 
 
 ```{r}
+
 res %>%
         # only show immune cells
         # filter(BaselineProp.clusters %in% cells_to_keep) %>%
@@ -150,15 +247,16 @@ res %>%
         arrange(M_F_Log2Ratio) %>%
         mutate(ct = factor(ct, levels = ct)) %>%
         # plot
-        ggplot(aes(x = M_F_Log2Ratio, y = ct,
+        ggplot(aes(x = M_F_Log2Ratio, y = simplified_ct,
                    color = lineage)) +
         # add points
-        geom_point(size = 6, aes(alpha= sign)) +
-        # modify point color
-        scale_alpha_manual(values = c(1, 0.5, 0.15),
-                           labels = c("P < 0.05", "P < 0.1", "P > 0.1"),
-                           breaks = c("**", "*", ""),
-                           name = "P value") +
+        geom_point(size = 6) +
+        # geom_point(size = 6, aes(alpha= sign)) +
+        # # modify point color
+        # scale_alpha_manual(values = c(1, 0.5, 0.15),
+        #                    labels = c("P < 0.05", "P < 0.1", "P > 0.1"),
+        #                    breaks = c("**", "*", ""),
+        #                    name = "P value") +
         geom_vline(xintercept = 0, linetype = "longdash", color = "grey",
                    linewidth = 1.5, ) +
         theme_bw() +
@@ -169,14 +267,58 @@ res %>%
               legend.title = element_text(size = 20),
               legend.text = element_text(size = 15)) +
         # plot title
-        labs(title = "Cell type proportion distribution",
+        labs(title = "Cell type ratio between ",
              color = "Lineages") +
         # axis limits
-        xlim(c(-3, 3)) +
+        xlim(c(-2.5, 2.5)) +
         #axis title
         xlab("Log2(Male/Female)") +
-        ylab("Cell type") -> dotplot
-dotplot
+        ylab("Cell type") -> dotplot_simpl
+res %>%
+        # only show immune cells
+        # filter(BaselineProp.clusters %in% cells_to_keep) %>%
+        # filter(P.Value < 0.05) %>%
+        # sort by PropRatioLog2 for ggplot
+        arrange(M_F_Log2Ratio) %>%
+        mutate(ct = factor(ct, levels = ct)) %>%
+        # plot
+        ggplot(aes(x = M_F_Log2Ratio, y = ct,
+                   color = lineage)) +
+
+  # add vertical line
+  geom_vline(xintercept = 0, linetype = "longdash", color = "grey",
+                   linewidth = 1.5, ) +
+        # add points
+        geom_point(size = 6) +
+
+        facet_grid(rows = vars(factor(simplified_ct, levels = c("Dendritic cells", "Progenitor cells", "Granulocytes", "Monocytes", "B cells", "T/NK cells", "Mk", "Erythrocytes", "Stroma" ))),
+                   scales="free", space = "free_y" )+
+        # geom_point(size = 6, aes(alpha= sign)) +
+        # # modify point color
+        # scale_alpha_manual(values = c(1, 0.5, 0.15),
+        #                    labels = c("P < 0.05", "P < 0.1", "P > 0.1"),
+        #                    breaks = c("**", "*", ""),
+        #                    name = "P value") +
+
+        theme_bw() +
+        theme(title = element_text(margin = margin(b = 0)))+
+        # theme(legend.position = "none") +
+        # axis text labels size
+        # theme(axis.title = element_text(size = 20),
+        #       axis.text = element_text(size = 15),
+        #       legend.title = element_text(size = 20),
+        #       legend.text = element_text(size = 15)) +
+        # plot title
+        labs(title = "Cell type frequency sex bias",
+             color = "Lineages",
+             y = "Simplified cell types")  +
+        # axis limits
+        xlim(c(-2.5, 2.5)) +
+        #axis title
+        xlab("Log2(Male/Female)") +
+        ylab("Cell type") -> dotplot_ct
+dotplot_simpl
+dotplot_ct
 ```
 
 
@@ -212,9 +354,36 @@ col_umap + scale_color_gradient2(low = "#ff00ff", high = "#ffff66" ,
 col_umap
 ```
 
+```{r}
+# patchwork
+layout <- "
+AAD
+AAD
+BBD
+BBD
+CCD
+"
+# (s_freq_sex/s_freq_project) + (variance_plot/dotplot_ct)-> fig3_patchwork
+s_freq_sex + s_freq_project + variance_plot + dotplot_ct -> fig3_patchwork
+fig3_patchwork <- fig3_patchwork + plot_layout(design = layout) +
+ plot_annotation(tag_levels = "A",
+                                 caption = "Figure 3. Sex effect on cell type frequency A-B. Simplified cell type proportions per sample grouped by sex (A) and study of origin (B). C. Proportion of variance in cell type frequencies among samples explained by age, sex, and project. D. Log2 ratio of cell type proportions between male and female samples. No cell type showed signficant differences between males and females (FDR<0.1). Cell types are faceted by simplified cell types and colored by main hematopoietic lineages.") &
+  theme(plot.caption = ggtext::element_textbox_simple(size = 11))
+ggsave("results/plots/fig3_patchwork.png", fig3_patchwork, dpi = 600,  height = 12, width = 16)
 
 
-# save
+
+# fig3_image <-  magick::image_read("results/plots/fig3_patchwork.png") %>% magick::image_ggplot()
+# fig3_captioned <- fig3_image + plot_annotation(,
+#                                  caption = "Figure 3. Systematic A-B. Simplified cell type proportions per sample grouped by sex (A) and study of origin (B). C. Proportion of variance in cell type frequencies among samples explained by age, sex, and project. D. Log2 ratio of cell type proportions between male and female samples. Cell types are faceted by simplified cell types and colored by main hematopoietic lineages.") &
+#   theme(plot.caption = ggtext::element_textbox_simple(size = 1, halign = 0, margin = margin(t = 10, r = 10, b = 10, l = 10)))
+# ggsave("results/plots/fig3_captioned.png", fig3_captioned, dpi = 600,  height = 13, width = 16)
+fig3_image
+```
+
+
+
+# Save
 
 Save the plots and tables
 ```{r}
@@ -222,16 +391,20 @@ ggsave("results/plots/02_freq_sex.png", freq_sex, dpi = 600)
 ggsave("results/plots/02_freq_project.png", freq_project, dpi = 600)
 ggsave("results/plots/02_s_freq_sex.png", s_freq_sex, dpi = 600)
 ggsave("results/plots/02_s_freq_project.png", s_freq_project, dpi = 600)
-ggsave("results/plots/02_dotplot.png", dotplot, dpi = 600, height = 12, width = 10)
+# ggsave("results/plots/02_dotplot.png", dotplot, dpi = 600, height = 12, width = 10)
+ggsave("results/plots/02_dotplot_simpl.png", dotplot_simpl, dpi = 600, height = 12, width = 10)
+ggsave("results/plots/02_dotplot_ct.png", dotplot_ct, dpi = 600, height = 12, width = 10)
 ggsave("results/plots/02_col_umap.png", col_umap, dpi = 600, height = 10, width = 10)
-
-write.table(res, "results/tables/02_res.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+# save fig 3
+ggsave("results/plots/fig3_patchwork.png", fig3_patchwork, dpi = 600,  height = 12, width = 16)
+ggsave("results/plots/fig3_captioned.png", fig3_captioned, dpi = 600,  height = 13, width = 16)
+write.table(res, "results/tables/02_res.txt", sep = "\t", quote = FALSE, row.names = TRUE)
 ```
 
 # Session info
 
 ```{r}
 sessionInfo()
-sink("results/tables/01_session_info.txt")
+sink("results/tables/02_session_info.txt")
 
 ```

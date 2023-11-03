@@ -184,6 +184,13 @@ mamba install r-paletteer
 mamba install r-vegan
 mamba install bioconductor-topgo
 mamba install r-ggridges
+mamba install r-gtextras r-svglite
+mamba install bioconductor-muscat
+mamba install r-ggpubr bioconductor-sva
+mamba install bioconductor-enrichplot bioconductor-clusterprofiler bioconductor-pathview
+mamba install r-magick
+
+
 ```
 
 ## R
@@ -195,6 +202,8 @@ BiocManager::install("BiocParallel")
 remotes::install_github("phipsonlab/speckle", build_vignettes = TRUE, 
 dependencies = "Suggest")
 remotes::install_github("phipsonlab/cellxy")
+remotes::install_github("saeyslab/muscatWrapper")
 
 
 ```
+
