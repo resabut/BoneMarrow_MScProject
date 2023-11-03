@@ -65,7 +65,7 @@ projects
 
 # see individuals
 bm@meta.data %>%
-  distinct(project_id, subject_id, sample_id, gender, age,) -> indiv.metadata
+  distinct(project_id, subject_id, sample_id, gender, age, cell_sorting) -> indiv.metadata
 indiv.metadata
 
 # plot ages in histogram

@@ -4,6 +4,9 @@ output: html_notebook
 ---
 ```{r}
 setwd("/home/inf-38-2022/MScProject/01_Integration/")
+# set the file appendix
+file_appendix <- "immature_hema_niche_50"
+# load libraries
 library(Seurat)
 library(pbmcapply)
 library(scDblFinder)
@@ -12,19 +15,24 @@ library(stringr)
 library(FastIntegration)
 library(tidyr)
 library(dplyr)
+
 ```
 ```{r}
 options(bitmapType = "cairo")
+
 `%!in%` <- Negate('%in%')
 meta <- FindSampleByMetadata()
 
 meta <- meta[which(meta$tissue == "bone marrow"),]
 meta <- meta[grep("10", meta$platform),]
 meta <- meta[which(meta$sampleType == "Normal"),]
-# remove fetal
-meta <- meta[which(meta$projectId %!in% c("E-MTAB-9389", "GSE166895") ),] # contain fetal samples
-# no cell sorting
-meta <- meta[which(is.na(meta$cellSorting)),]
+# # remove fetal
+# meta <- meta[which(meta$projectId %!in% c("E-MTAB-9389", "GSE166895") ),] # contain fetal samples
+# # no cell sorting
+# meta <- meta[which(is.na(meta$cellSorting)),]
+# two big datasets
+meta <- meta[which(meta$projectId %in% c("HCA_HematopoieticImmuneCellAtlas", "GSE120221") ),]
+
 
 bm <- readRDS("../data/DISCO/full_DISCO_age_v2.rds")
 bm@meta.data %>% distinct(sample) -> annotated_samples
@@ -72,8 +80,15 @@ rna.list <- pbmclapply(
       return(NULL)
     }
     # filter cell type -- only progenitor cells, if there are no progenitor cells, skip the sample
-    # just B cell lineage
-    cells_to_keep <- c("HSC", "MPP", "CLP", "proB cell", "preB cell", "Naive B cell")
+    #  remove the cells that are terminally differentiated or have left the hematopoietic niche (e.g. plasma cells, NK/ T cells, etc.)
+    cells_to_keep <- c("Naive B cell",  "preB cell", "preB cell (cycling)", "proB cell", "proB cell (cycling)",
+                       "Early SOX4+ erythroblast", "Late hemoglobin+ erythroblast", "Fetal HBG+ erythrocyte", "Intermediate EPCAM+ erythroblast",
+                       "S100A+ preNeutrophil (cycling)", "S100A+ preNeutrophil", "Metamyelocyte/Band neutrophil", "Promyelocyte", "Myelocyte",
+                       "pre-pDC (lymphoid origin)", "pre-pDC (myeloid origin)", "cDC2", "cDC2 (cycling)", "cDC1", "pDC",
+                       "Megakaryocyte", "Megakaryocyte progenitor",
+                       "CLP", "CMP", "GMP", "MEP", "MPP", "CDP", "HSC"
+                       )
+    cells_to_keep <-
     if (length(which(rna$ct %in% cells_to_keep )) < 50) {
       print(paste0("Skipping ", meta$sampleId[i], " because there are not enough cells (>50 required)"))
       return(NULL)
@@ -82,7 +97,10 @@ rna.list <- pbmclapply(
       print(paste0("Keeping ", meta$sampleId[i], " cells"))
       rna <- subset(rna, subset= ct %in% cells_to_keep)
     }
-
+    print(any(is.na(rna[["RNA"]]@data)))
+    print(any(is.nan(rna[["RNA"]]@data)))
+    print(any(is.infinite(rna[["RNA"]]@data)))
+    print(any(is.null(rna[["RNA"]]@data)))
     # pre-process
     DefaultAssay(rna) <- "RNA"
     rna <- NormalizeData(rna)
@@ -108,6 +126,8 @@ I lower it to 50 per samples because of the progenitors.
 rna.list <- rna.list[which(unlist(lapply(rna.list, ncol)) >= 50)]
 # # 33538 features in total
 # rna.list <- rna.list[which(unlist(lapply(rna.list, nrow)) == 33538)]
+#counts how many NA there are in a matrix
+rna.list <- rna.list[which(unlist(lapply(rna.list, function(x) sum(is.na(x)))) == 0)]
 ```
 Save the list
 ```{r}
@@ -140,6 +160,7 @@ pbmclapply(
 After integration
 ```{r}
 rm(list=ls())
+file_appendix <- "immature_hema_niche_50"
 library(Seurat)
 library(pbmcapply)
 library(stringr)
@@ -208,7 +229,7 @@ rna.data <- AddMetaData(rna.data, meta)
 # rna.data@assays$RNA@counts <- matrix(0)
 # rna.data@assays$RNA@scale.data <- matrix(0)
 # rna.data@assays$raw@counts <- matrix(0)
-saveRDS(rna.data, "rna_processed_adult_Bcell_50.rds", compress = F)
+saveRDS(rna.data, paste0("rna_processed_", file_appendix,".rds"), compress = F)
 ```
 
 Plot umap
@@ -262,7 +283,7 @@ rna.data <- AddMetaData(rna.data,bm$gender, col.name="gender")
 ```
 save the cell type annoted dataset
 ```{r}
-saveRDS(rna.data, "rna_annotated_adult_Bcell_50.rds", compress = F)
+saveRDS(rna.data, paste0("rna_annotated_", file_appendix,".rds"), compress = F)
 ```
 plot
 ```{r}
@@ -319,7 +340,7 @@ for (i in seq_along(simplified_ct_list$simplified_ct %>% unique())) {
 
 # plot pdf
 ```{r}
-pdf("plot_Bcell.pdf", width = 15, height = 10)
+pdf(paste0("plot", file_appendix, ".pdf"), width = 15, height = 10)
 p1
 p2
 p3

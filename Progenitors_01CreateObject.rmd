@@ -41,15 +41,29 @@ bm.progenitors <- subset(bm.progenitors, subset = age_groups == "under 45")
 ```
 # Re-process
 ```{r reprocess}
+# prepare for integration
+progenitors_list <- SplitObject(bm.progenitors, split.by = "project_id")
+# find variable features
+progenitors_list <- lapply(progenitors_list, function(x) {
+  x <- NormalizeData(object = x, normalization.method = "LogNormalize", scale.factor = 10000)
+  x <- FindVariableFeatures(object = x, selection.method = "vst", assay = "RNA")
 
-bm.progenitors <- FindVariableFeatures(object = bm.progenitors)
-# reintegrate data
+})
+# select features that are variable across all datasets
+progenitors_features <- SelectIntegrationFeatures(progenitors_list)
+# perform integration
+bm.progenitors.anchors <- FindIntegrationAnchors(object = progenitors_list, features = progenitors_features)
+bm.progenitors <- IntegrateData(anchorset = bm.progenitors.anchors, dims = 1:30)
+# reprocess data
+DefaultAssay(bm.progenitors) <- "integrated"
 bm.progenitors <- ScaleData(object = bm.progenitors)
 bm.progenitors <- RunPCA(object = bm.progenitors)
-bm.progenitors <- FindNeighbors(object = bm.progenitors)
-bm.progenitors <- FindClusters(object = bm.progenitors)
 bm.progenitors <- RunUMAP(object = bm.progenitors, dims = 1:30)
-DimPlot(object = bm.progenitors, reduction = "umap", group.by = "ct", label = TRUE)
+bm.progenitors <- FindNeighbors(object = bm.progenitors, reduction="pca", dims = 1:30)
+bm.progenitors <- FindClusters(object = bm.progenitors, resolution=0.5)
+DimPlot(object = bm.progenitors, reduction = "umap", group.by = "ct", label = TRUE) -> p1
+DimPlot(object = bm.progenitors, reduction = "umap", group.by = "project_id", label = TRUE) -> p2
+p1 + p2
 ```
 
 

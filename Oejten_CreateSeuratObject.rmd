@@ -7,11 +7,12 @@ output:
 # Load libraries
 
 ```{r}
-rm(list=ls())
+# rm(list=ls())
 # suppress load messages
 suppressMessages(library(dplyr))
 suppressMessages(library(Seurat))
 suppressMessages(library(GEOquery))
+# suppressMessages(library(cellXY))
 ```
 
 # Download data
@@ -108,6 +109,10 @@ all_data[["age"]] <- sex_age_cell_df$age
 sum(is.na(all_data[['age']]))
 sum(is.na(all_data[['sex']]))
 ```
+
+
+
+
 
 
 # Save Seurat object
