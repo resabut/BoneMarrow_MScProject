@@ -1,0 +1,350 @@
+    ---
+title: "GSEA"
+output: html_notebook
+---
+https://github.com/saeyslab/muscatWrapper/blob/master/vignettes/basic_analysis_batchcor.md
+
+
+# load
+
+## packages
+```{r}
+setwd("/home/inf-38-2022/MScProject/Main_dir/")
+
+library(Seurat)
+library(SingleCellExperiment)
+library(dplyr)
+library(ggplot2)
+library(muscatWrapper)
+
+'%!in%' <- Negate(`%in%`)
+set.seed(1234)
+```
+
+
+## data
+```{r}
+data <- readRDS("data/processed/DISCO_BM_v2_processed.rds")
+```
+
+Filtering
+```{r}
+simpl_ct_rm <- c("T/NK cells", "Stroma")
+cycling_ct <- data@meta.data %>%
+                filter(grepl("cycling", ct)) %>%
+                distinct(ct) %>%
+                pull(ct)
+ct_rm <- c("Plasma cell", cycling_ct, "Erythrocyte", "Platelets", "Memory B cell", "Fetal HBG+ erythrocyte")
+projects_keep <- c("GSE120221", "HCA_HematopoieticImmuneCellAtlas", "GSE185381")
+data <- subset(data,
+               subset = ct %!in% ct_rm & simplified_ct %!in% simpl_ct_rm & project_id %in% projects_keep)
+```
+
+```{r}
+sce <- as.SingleCellExperiment(data)
+```
+
+# MUSCAT
+```{r}
+sample_id <- "sample"
+group_id <- "Predicted_sex"
+celltype_id <- "ct"
+covariates <- "project_id"
+```
+
+## cell number
+```{r}
+# set minimum number of cells per sample and cell type to 10
+min_cells <- 10
+
+abundance_output <- muscatWrapper::get_abundance_info(sce, sample_id, group_id, celltype_id, min_cells, covariates = covariates)
+head(abundance_output$abundance_data)
+
+abundance_output$abund_plot_sample
+
+```
+
+## abundance between groups of interest
+```{r}
+abundance_output$abund_plot_group
+abundance_output$abund_barplot
+```
+
+## statistical testing
+```{r}
+contrasts_oi <- c("'F-M','M-F'")
+contrast_tbl <- tibble(contrast = c("F-M", "M-F"),
+                        group = c("F", "M"))
+```
+
+```{r}
+muscat_output <- muscatWrapper::muscat_analysis(
+     sce = sce,
+     celltype_id = celltype_id,
+     sample_id = sample_id,
+     group_id = group_id,
+     covariates = covariates,
+     contrasts_oi = contrasts_oi,
+     contrast_tbl = contrast_tbl)
+```
+
+## check results
+Save significant DEG
+```{r}
+muscat_output$celltype_de$celltype_de$de_output_tidy %>% filter(p_adj <= 0.05 & logFC >= 1) %>% arrange(p_adj) %>% filter(contrast == "M-F") -> DE_genes_table
+write.table(DE_genes_table, "results/tables/DE_genes.csv", sep = ",", row.names = FALSE)
+```
+
+
+```{r}
+muscat_output$celltype_info %>% lapply(head)
+```
+```{r}
+muscat_output$celltype_de$celltype_de$de_output_tidy %>% arrange(p_adj) %>% head()
+```
+p-values
+```{r}
+muscat_output$celltype_de$hist_pvals
+```
+
+
+# Downstream
+## exploring DE genes for a cell type
+```{r}
+celltype_oi <- "cDC1"
+group_oi <- "M"
+
+DE_genes <- muscat_output$celltype_de$celltype_de$de_output_tidy  %>% inner_join(contrast_tbl) %>% filter(group == group_oi) %>% filter(cluster_id == celltype_oi) %>% filter(p_adj <= 0.05 & logFC >= 1) %>% arrange(p_adj) %>% pull(gene) %>% unique()
+DE_genes
+
+```
+
+```{r}
+gene_oi <- DE_genes[1]
+
+violin_plot <- muscatWrapper::make_DEgene_violin_plot(sce = sce, gene_oi = gene_oi, celltype_oi = celltype_oi, group_id = group_id, sample_id = sample_id, celltype_id = celltype_id, covariate_oi = covariates)
+violin_plot
+```
+
+## GSEA
+
+https://yulab-smu.top/biomedical-knowledge-mining-book/clusterprofiler-go.html
+```{r}
+library(clusterProfiler)
+library(enrichplot)
+library(ggplot2)
+library(org.Hs.eg.db)
+```
+
+```{r}
+# select genes from a cell type
+d <- muscat_output$celltype_de$celltype_de$de_output_tidy %>%
+                filter(cluster_id == "cDC1", contrast =="M-F" ) %>% # positive higher in males
+                arrange(-logFC) %>%
+                dplyr::select(gene, logFC)
+geneList <- d$logFC
+names(geneList) <- as.character(d$gene)
+geneList <- sort(geneList, decreasing = TRUE)
+```
+
+
+
+```{r}
+gse <- gseGO(geneList=geneList,
+             ont ="ALL",
+             keyType = "SYMBOL",
+             minGSSize = 10,
+             # maxGSSize = 500,
+             pvalueCutoff = 0.05,
+             verbose = TRUE,
+             OrgDb = org.Hs.eg.db,
+             pAdjustMethod = "BH")
+```
+
+```{r}
+dotplot(gse, color ="NES")
+```
+
+
+## compare cluster
+make all the gene lists
+```{r}
+
+cell_types <- muscat_output$celltype_de$celltype_de$de_output_tidy$cluster_id %>% unique()
+make_gene_list <- function (cell_type) {
+    d <- muscat_output$celltype_de$celltype_de$de_output_tidy %>%
+                    filter(cluster_id == !!cell_type , contrast =="M-F" ) %>% # positive higher in males
+                    dplyr::select(gene, logFC)
+    geneList <- d$logFC
+    names(geneList) <- as.character(d$gene)
+    geneList <- sort(geneList, decreasing = TRUE)
+    return(geneList)
+}
+
+
+cluster_list <- lapply(cell_types, make_gene_list )
+names(cluster_list) <- cell_types
+```
+
+```{r}
+ck <- compareCluster(geneClusters = cluster_list,
+                     fun = gseGO,
+                     minGSSize = 10,
+                     pvalueCutoff = 0.05,
+                     pAdjustMethod = "BH",
+                     OrgDb = org.Hs.eg.db,
+                     ont = "ALL",
+                     keyType = "SYMBOL")
+saveRDS("04_GSEA/ck.rds")
+write.table(ck@compareClusterResult %>% filter(grouping!="Other"), "results/tables/ck.csv", sep = ",", row.names = FALSE)
+```
+
+```{r}
+```
+
+
+
+ * Mitochondrial
+    * Mitochondrial protein-containing complex
+    * Mitochondrial translation
+    * Mitochondrial inner membrane
+    * Mitochondrial matrix
+    * Mitochondrial gene expression
+    * Mitochondrial envelope
+* Cellular machinery
+    * Organelle inner membrane
+    * Mitochondrial membrane
+    * Electron transport chain
+    * RNA polymerase II cis-regulatory region sequence-specific DNA binding
+    * Cis-regulatory region sequence-specific DNA binding
+    * Transcription cis-regulatory region binding
+    * Sequence-specific double-stranded DNA binding
+* Cell processes
+    * Chromosome organization
+    * Cell cycle process
+    * DNA replication
+    * DNA metabolic process
+    * Mitochondrion
+    * Translation
+    * Cellular macromolecule biosynthetic process
+    * Amide biosynthetic process
+    * Peptide metabolic process
+    * Ribonucleoprotein complex
+```{r}
+# x_order <- c( "Myelocyte", "S100A+ preNeutrophil", "CD14+MHCIIhigh monocyte", "CD14+MHCIIlow monocyte", "CD16+ monocyte", "cDC1", "cDC2",  "pDC",  "proB cell","preB cell","Naive B cell")
+
+x_order <- c( "S100A+ preNeutrophil","CD14+MHCIIlow monocyte",  "CD14+MHCIIhigh monocyte",  "CD16+ monocyte", "cDC1", "cDC2", "proB cell","preB cell","Naive B cell")
+
+
+Mitochondrial <- c("mitochondrial protein-containing complex",
+                   "mitochondrial ribosome",
+                   "mitochondrial translation",
+                   "mitochondrial inner membrane",
+                   "organelle inner membrane",
+                   "mitochondrial matrix",
+                   "mitochondrial envelope",
+                   "mitochondrion",
+                   "electron transport chain",
+                   "respiratory electron transport chain",
+                   "organellar ribosome")
+
+GeneticRegulation <- c("cis-regulatory region sequence-specific DNA binding",
+                       "RNA polymerase II transcription regulatory region sequence-specific DNA binding",
+                       "sequence-specific double-stranded DNA binding",
+                       "transcription regulatory region nucleic acid binding",
+                       "sequence-specific DNA binding")
+
+CellCycle <- c("cell cycle process",
+                       "chromosome organization",
+                       "DNA replication",
+                       "DNA metabolic process",
+                       "DNA-templated DNA replication")
+
+RibosomalFunctions <- c(
+                        "ribosome",
+                        "ribosomal subunit",
+                        "cytosolic ribosome",
+                        "translation",
+                        "structural constituent of ribosome")
+
+ck@compareClusterResult$grouping <- ifelse(ck@compareClusterResult$Description %in% Mitochondrial, "Mitochondrial Function",
+                                           ifelse(ck@compareClusterResult$Description %in% GeneticRegulation, "Gene Regulation",
+                                                  ifelse(ck@compareClusterResult$Description %in% CellCycle, "Cell Cycle",
+                                                         ifelse(ck@compareClusterResult$Description %in% RibosomalFunctions, "Ribosomal Function", "Other"))))
+
+
+
+
+dotplot(ck,showCategory=5, font.size = 15, label_format = 55, color = "NES", size = "setSize") -> dotplot_clusters
+dotplot_clusters <- dotplot_clusters + theme(axis.text.x = element_text(angle = 20, hjust=1))
+# change the color scale to nes_cat
+dotplot_clusters <- dotplot_clusters + scale_color_gradient2(low = "#8A69D4", high = "#FFD635" , midpoint = 0, mid = "gray") +
+  facet_grid( factor(grouping, levels = c("Mitochondrial Function", "Cell Cycle", "Gene Regulation", "Ribosomal Function"))~.,
+              scales = "free_y", switch = "y", space = "free",
+  labeller = label_wrap_gen(width = 10)) +
+  labs(y=NULL, x ="Cell type", size = "Set size") +
+    theme(strip.background = element_blank(), strip.placement = "outside",
+          strip.text.y = ggtext::element_textbox_simple(size =15,  face = "bold"),
+          axis.text.y = element_text(size = 10)) +
+
+  scale_x_discrete(limits = x_order)
+  #   scale_y_discrete(limits = rev(y_order))
+dotplot_clusters + patchwork::plot_annotation(caption = "Figure 6. Females overexpress mitochondrial-related genes, whereas males show enrichment in gene regulation pathways. GSEA for GO categories. Only cell types with at least one signficant category (p.adj > 0.5) are shown. Size represents the number of genes in the category and color represents the NES (Overexpressed in males (gold) or females (purple)). GO categories have been grouped into general terms.") &
+ theme(plot.caption = ggtext::element_textbox_simple(size=11))-> dotplot_clusters
+ggsave("results/plots/fig6_dotplot_clusters_gsea.png", dotplot_clusters, width = 14, height = 9, units = "in")
+saveRDS(dotplot_clusters, "results/plots/fig6_dotplot_clusters_gsea.rds")
+```
+
+
+
+ [1] CD14+MHCIIhigh monocyte CD14+MHCIIlow monocyte  CD16+ monocyte
+ [4] cDC1                    cDC2                    Myelocyte
+ [7] Naive B cell            pDC                     preB cell
+[10] proB cell               S100A+ preNeutrophil
+
+```{r}
+# ck@compareClusterResult$nes_cat <- ifelse(ck@compareClusterResult$NES > 0, "Enriched in males", "Enriched in females")
+x_order <- c( "S100A+ preNeutrophil","CD14+MHCIIlow monocyte",  "CD14+MHCIIhigh monocyte",  "CD16+ monocyte", "cDC1", "cDC2", "proB cell","preB cell","Naive B cell")
+
+
+
+
+
+y_order <- c(
+  "mitochondrial protein-containing complex",
+  "mitochondrial translation",
+  "mitochondrial inner membrane",
+  "mitochondrial matrix",
+  "mitochondrial gene expression",
+  "mitochondrial envelope",
+  "organelle inner membrane",
+  "mitochondrial membrane",
+  "electron transport chain",
+  # "mitochondrion",
+  "chromosome organization",
+  "cell cycle process",
+  "DNA replication",
+  "DNA metabolic process",
+  # "RNA polymerase II cis-regulatory region sequence-specific DNA binding",
+  "cis-regulatory region sequence-specific DNA binding",
+  "transcription cis-regulatory region binding",
+  "sequence-specific double-stranded DNA binding",
+  "translation",
+  "cellular macromolecule biosynthetic process",
+  "amide biosynthetic process",
+  "peptide metabolic process",
+  "ribonucleoprotein complex"
+)
+dotplot(ck,showCategory=5, font.size = 15, label_format = 55, color = "NES", size = "NES") -> dotplot_clusters
+dotplot_clusters <- dotplot_clusters + theme(axis.text.x = element_text(angle = 20, hjust=1))
+# change the color scale to nes_cat
+dotplot_clusters + scale_color_gradient2(low = "#ff00ff", high = "#ffff66" , midpoint = 0, mid = "gray") + scale_x_discrete(limits = x_order) +
+    scale_y_discrete(limits = rev(y_order)) -> dotplot_clusters
+dotplot_clusters
+```
+
+```{r}
+ggsave("results/plots/dotplot_clusters_gsea.pdf", dotplot_clusters, width = 14, height = 8, units = "in")
+```
+
+
