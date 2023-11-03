@@ -1,9 +1,7 @@
 # Sex differences in hematopoiesis, a systems immunology approach
-This repository contains the necessary files to 
 
-# BoneMarrow_MScProject
 
-This is a private repository containing the Seurat single-cell RNAseq analysis of bone marrow data.
+This repository contains the Seurat single-cell RNAseq analysis of bone marrow data.
 
 <img alt="graphical abstract" src="img/graphical_abstract.png"/>
 
