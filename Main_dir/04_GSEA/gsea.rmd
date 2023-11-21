@@ -280,7 +280,9 @@ ck@compareClusterResult$grouping <- ifelse(ck@compareClusterResult$Description %
 
 
 
-dotplot(ck,showCategory=5, font.size = 15, label_format = 55, color = "NES", size = "setSize")  -> dotplot_clusters
+ck %>%
+  filter(grouping != "Other") %>%
+  dotplot(,showCategory=5, font.size = 15, label_format = 55, color = "NES", size = "setSize")  -> dotplot_clusters
 dotplot_clusters <- dotplot_clusters + theme(axis.text.x = element_text(angle = 20, hjust=1))
 # change the color scale to nes_cat
 dotplot_clusters <- dotplot_clusters + scale_color_gradient2(low = "#8A69D4", high = "#FFD635" , midpoint = 0, mid = "gray") +
@@ -297,59 +299,13 @@ dotplot_clusters <- dotplot_clusters + scale_color_gradient2(low = "#8A69D4", hi
 dotplot_clusters + patchwork::plot_annotation(caption = "Figure 6. Females overexpress mitochondrial-related genes, whereas males show enrichment in gene regulation pathways. GSEA for GO categories. Only cell types with at least one signficant category (p.adj > 0.5) are shown. Size represents the number of genes in the category and color represents the NES (Overexpressed in males (gold) or females (purple)). GO categories have been grouped into general terms.") &
  theme(plot.caption = ggtext::element_textbox_simple(size=11))-> dotplot_clusters
 ggsave("results/plots/fig6_dotplot_clusters_gsea.png", dotplot_clusters, width = 14, height = 9, units = "in")
+# with date
+ggsave(paste0("results/plots/fig6_dotplot_clusters_gsea_", date, ".png"), dotplot_clusters, width = 14, height = 9, units = "in")
 saveRDS(dotplot_clusters, "results/plots/fig6_dotplot_clusters_gsea.rds")
 ```
 
 
 
- [1] CD14+MHCIIhigh monocyte CD14+MHCIIlow monocyte  CD16+ monocyte
- [4] cDC1                    cDC2                    Myelocyte
- [7] Naive B cell            pDC                     preB cell
-[10] proB cell               S100A+ preNeutrophil
 
-```{r}
-# ck@compareClusterResult$nes_cat <- ifelse(ck@compareClusterResult$NES > 0, "Enriched in males", "Enriched in females")
-x_order <- c( "S100A+ preNeutrophil","CD14+MHCIIlow monocyte",  "CD14+MHCIIhigh monocyte",  "CD16+ monocyte", "cDC1", "cDC2", "proB cell","preB cell","Naive B cell")
-
-
-
-
-
-y_order <- c(
-  "mitochondrial protein-containing complex",
-  "mitochondrial translation",
-  "mitochondrial inner membrane",
-  "mitochondrial matrix",
-  "mitochondrial gene expression",
-  "mitochondrial envelope",
-  "organelle inner membrane",
-  "mitochondrial membrane",
-  "electron transport chain",
-  # "mitochondrion",
-  "chromosome organization",
-  "cell cycle process",
-  "DNA replication",
-  "DNA metabolic process",
-  # "RNA polymerase II cis-regulatory region sequence-specific DNA binding",
-  "cis-regulatory region sequence-specific DNA binding",
-  "transcription cis-regulatory region binding",
-  "sequence-specific double-stranded DNA binding",
-  "translation",
-  "cellular macromolecule biosynthetic process",
-  "amide biosynthetic process",
-  "peptide metabolic process",
-  "ribonucleoprotein complex"
-)
-dotplot(ck,showCategory=5, font.size = 15, label_format = 55, color = "NES", size = "NES") -> dotplot_clusters
-dotplot_clusters <- dotplot_clusters + theme(axis.text.x = element_text(angle = 20, hjust=1))
-# change the color scale to nes_cat
-dotplot_clusters + scale_color_gradient2(low = "#ff00ff", high = "#ffff66" , midpoint = 0, mid = "gray") + scale_x_discrete(limits = x_order) +
-    scale_y_discrete(limits = rev(y_order)) -> dotplot_clusters
-dotplot_clusters
-```
-
-```{r}
-ggsave("results/plots/dotplot_clusters_gsea.pdf", dotplot_clusters, width = 14, height = 8, units = "in")
-```
 
 
