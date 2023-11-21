@@ -154,7 +154,7 @@ gse <- gseGO(geneList=geneList,
              ont ="ALL",
              keyType = "SYMBOL",
              minGSSize = 10,
-             # maxGSSize = 500,
+             maxGSSize = 500,
              pvalueCutoff = 0.05,
              verbose = TRUE,
              OrgDb = org.Hs.eg.db,
@@ -200,7 +200,12 @@ write.table(ck@compareClusterResult %>% filter(grouping!="Other"), "results/tabl
 ```
 
 ```{r}
+date <- Sys.Date()
+file.name <- paste0("04_GSEA/ck_", date, ".rds")
+saveRDS(ck, file.name)
 ```
+
+
 
 
 
@@ -275,7 +280,7 @@ ck@compareClusterResult$grouping <- ifelse(ck@compareClusterResult$Description %
 
 
 
-dotplot(ck,showCategory=5, font.size = 15, label_format = 55, color = "NES", size = "setSize") -> dotplot_clusters
+dotplot(ck,showCategory=5, font.size = 15, label_format = 55, color = "NES", size = "setSize")  -> dotplot_clusters
 dotplot_clusters <- dotplot_clusters + theme(axis.text.x = element_text(angle = 20, hjust=1))
 # change the color scale to nes_cat
 dotplot_clusters <- dotplot_clusters + scale_color_gradient2(low = "#8A69D4", high = "#FFD635" , midpoint = 0, mid = "gray") +
