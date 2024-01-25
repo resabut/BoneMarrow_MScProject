@@ -13,7 +13,7 @@ The project has the following files and directories:
 - **Main_dir/**: This directory contains the main scripts and notebooks for the analysis.
 - **README.md**: This file provides an overview of the project and its contents.
 - **conda_env.md**: This file lists the conda environment and packages used for the analysis for manual installation.
-- **r-integration.txt**: This file contains the instruction for a automatic installation of all the packages in the conda environment.
+- **r-integration.yaml**: This file contains the instruction for a automatic installation of all the packages in the conda environment.
 
 ## How to use
 
@@ -29,7 +29,7 @@ To use this project, follow these steps:
 Run the following commands to install the conda environment:
 
 ```bash
-conda env create --file r-integration.txt
+conda env create --file r-integration.yaml -n r-integration
 conda activate r-integration
 ```
 Next install the R packages using the following command:
