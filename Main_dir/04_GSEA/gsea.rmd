@@ -184,6 +184,9 @@ make_gene_list <- function (cell_type) {
 
 cluster_list <- lapply(cell_types, make_gene_list )
 names(cluster_list) <- cell_types
+#  save the list
+date <- Sys.Date()
+saveRDS(cluster_list, paste0("results/tables/cluster_list_", date, ".rds"))
 ```
 
 ```{r}
@@ -195,12 +198,10 @@ ck <- compareCluster(geneClusters = cluster_list,
                      OrgDb = org.Hs.eg.db,
                      ont = "ALL",
                      keyType = "SYMBOL")
-saveRDS("04_GSEA/ck.rds")
-write.table(ck@compareClusterResult %>% filter(grouping!="Other"), "results/tables/ck.csv", sep = ",", row.names = FALSE)
-```
-
-```{r}
 date <- Sys.Date()
+
+write.table(ck@compareClusterResult %>% filter(grouping!="Other"), paste0("results/tables/ck", date,".csv"), sep = ",", row.names = FALSE)
+
 file.name <- paste0("04_GSEA/ck_", date, ".rds")
 saveRDS(ck, file.name)
 ```
@@ -306,6 +307,205 @@ saveRDS(dotplot_clusters, "results/plots/fig6_dotplot_clusters_gsea.rds")
 
 
 
+## KEGG
+Convert SYMBOL to ENTREZID. SOME fail. Around 5% of genes
+```{r}
+
+cluster_list_kegg <- lapply(cluster_list, function(x) {
+
+  name_table <- bitr(names(x), fromType = "SYMBOL", toType = "UNIPROT",
+            OrgDb = org.Hs.eg.db) %>% distinct(SYMBOL, .keep_all = TRUE)
+
+  names(x) <- name_table$UNIPROT
+  # remove NA
+  x <- x[!is.na(names(x))]
+  return(x)
+})
+Sys.Date() -> date
+saveRDS(cluster_list_kegg, paste0("results/tables/cluster_list_kegg_", date, ".rds"))
+```
 
 
 
+
+```{r}
+ck_kegg <- compareCluster(geneClusters = cluster_list_kegg,
+                     fun = gseKEGG,
+                     minGSSize = 10,
+                     pvalueCutoff = 0.05,
+                     pAdjustMethod = "BH",
+                     organism ="hsa",
+                     keyType = "uniprot"
+    )
+# save
+date <- Sys.Date()
+file.name <- paste0("results/tables/ck_kegg_", date, ".rds")
+saveRDS(ck_kegg, file.name)
+```
+
+dotplot
+```{r}
+x_order <- c("Promyelocyte", "Myelocyte", "S100A+ preNeutrophil","CD14+MHCIIlow monocyte",  "CD14+MHCIIhigh monocyte",  "CD16+ monocyte", "cDC1", "pDC","preB cell","Naive B cell")
+
+
+# Disease category
+Disease <- c( "Coronavirus disease - COVID-19", "Parkinson disease", "Prion disease", "Alzheimer disease", "Huntington disease", "Pathways of neurodegeneration - multiple diseases", "Non-alcoholic fatty liver disease", "Amyotrophic lateral sclerosis", "Retrograde endocannabinoid signaling", "Chemical carcinogenesis - reactive oxygen species", "Diabetic cardiomyopathy")
+
+# Metabolic category
+Metabolic <- c("Oxidative phosphorylation","Carbon metabolism",  "Metabolic pathways", "Thermogenesis")
+
+DNA <- c( "DNA replication", "Mismatch repair")
+
+ck_kegg@compareClusterResult$grouping <- ifelse(ck_kegg@compareClusterResult$Description %in% Disease, "Disease",
+                                           ifelse(ck_kegg@compareClusterResult$Description %in% Metabolic, "Metabolic",
+                                                  ifelse(ck_kegg@compareClusterResult$Description %in% DNA, "DNA", "Other")))
+
+
+
+ck_kegg %>%
+  filter(grouping != "Other") %>%
+  dotplot(,showCategory=5, font.size = 15, label_format = 55, color = "NES", size = "setSize")  + theme(axis.text.x = element_text(angle = 20, hjust=1)) -> dotplot_clusters_kegg
+# change the color scale to nes_cat
+dotplot_clusters_kegg <- dotplot_clusters_kegg + scale_color_gradient2(low = "#8A69D4", high = "#FFD635" , midpoint = 0, mid = "gray") +
+  facet_grid( factor(grouping, levels = c("Metabolic", "Disease", "DNA"))~.,
+              scales = "free_y", switch = "y", space = "free",
+  labeller = label_wrap_gen(width = 10)) +
+  labs(y=NULL, x ="Cell type", size = "Set size") +
+    theme(strip.background = element_blank(), strip.placement = "outside",
+          strip.text.y = ggtext::element_textbox_simple(size =15,  face = "bold"),
+          axis.text.y = element_text(size = 10)) +
+
+  scale_x_discrete(limits = x_order)
+
+
+# dotplot_clusters + patchwork::plot_annotation(caption = "Figure 6. Females overexpress mitochondrial-related genes, whereas males show enrichment in gene regulation pathways. GSEA for GO categories. Only cell types with at least one signficant category (p.adj > 0.5) are shown. Size represents the number of genes in the category and color represents the NES (Overexpressed in males (gold) or females (purple)). GO categories have been grouped into general terms.") &
+#  theme(plot.caption = ggtext::element_textbox_simple(size=11))-> dotplot_clusters
+# ggsave("results/plots/fig6_dotplot_clusters_gsea.png", dotplot_clusters, width = 14, height = 9, units = "in")
+# # with date
+date <- Sys.Date()
+ggsave(paste0("results/plots/fig7_dotplot_kegg_clusters_gsea_", date, ".png"), dotplot_clusters_kegg, width = 14, height = 9, units = "in")
+saveRDS(dotplot_clusters_kegg, "results/plots/fig7_dotplot_kegg_clusters_gsea.rds")
+```
+
+## heatmap
+
+```{r}
+library(clusterProfiler)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(org.Hs.eg.db)
+library(Seurat)
+x_y_heatmap <- function (ck, category , cell_type, seurat_obj = data, sample_col = "sample", sex_col = "Predicted_sex" ,assay="RNA", project_col ="project_id") {
+  # get genes to plot
+  ck@compareClusterResult %>%
+    filter(Description == category, Cluster ==cell_type) %>%
+    pull(core_enrichment) %>%
+    strsplit(split = "/")  %>%
+    unlist()-> genes_to_plot
+  # get gene names in symbol
+    bitr(genes_to_plot, fromType = "UNIPROT", toType="SYMBOL", OrgDb= org.Hs.eg.db) -> genes_to_plot
+  # get average expression per sample
+  sample.averages <- AverageExpression(seurat_obj, features = genes_to_plot$SYMBOL,
+                                       return.seurat = TRUE, group.by = sample_col)
+  Idents(sample.averages) <- names(Idents(sample.averages)) # idk why i do this
+  mean_gene_expr <- rowSums(sample.averages[[assay]]@scale.data)
+  var_genes <- names(mean_gene_expr[mean_gene_expr != 0])
+
+  # get M - F sample order for heatmap
+    seurat_obj@meta.data %>%
+      # arrange(!!sym(sex_col)) %>%
+      distinct(!!sym(sample_col), !!sym(sex_col), !!sym(project_col), age) -> sample_order
+  # Idents(sample.averages) <- factor(sample.averages@active.ident, levels = sample_order$sample_col)
+  # Add idents as metadata
+    sample.averages <- AddMetaData(sample.averages, metadata = Idents(sample.averages),
+                                     col.name = sample_col)
+  sample_order %>%
+    right_join(sample.averages@meta.data, by = c("sample" = "sample")) -> sample_order
+    rownames(sample_order) <- sample_order$sample
+   # add Predicted_sex as metadata
+  sample.averages <- AddMetaData(sample.averages, metadata = sample_order[,2],
+                                 col.name = "sex")
+  sample.averages <- AddMetaData(sample.averages, metadata = sample_order[,3],
+                                 col.name = "project_id")
+    sample.averages <- AddMetaData(sample.averages, metadata = sample_order[,4],
+                                 col.name = "age")
+  # both sex-project_id
+  sample.averages <- AddMetaData(sample.averages, metadata = paste(sample_order[,3], sample_order[,2], sep="_"), col.name = "sex_proj")
+  levels <- sample.averages@meta.data %>% arrange(sex_proj) %>% distinct(sex_proj) %>% pull(sex_proj)
+  Idents(sample.averages) <- factor(sample.averages@meta.data$sex_proj, levels = levels )
+  # plot heatmap
+    DoHeatmap(sample.averages, features = var_genes, size = 2, draw.lines = FALSE, group.by = "sex_proj",
+              assay = assay, disp.max = 2, disp.min = -0.8)  + NoLegend()-> x_y_heatmap_plot
+  # make boxplot
+  sample.averages[[assay]]@scale.data %>%
+    as.data.frame() %>%
+    mutate(gene =rownames(.)) %>%
+    filter(gene %in% var_genes) %>%
+    pivot_longer(-gene, names_to = "sample", values_to = "expr") %>%
+    left_join(sample_order, by = "sample") %>%
+    mutate(sample = factor(sample, levels = sample_order$sample_col)) %>%
+    ggplot(aes(x = gene, y = expr, fill = !!sym(sex_col))) +
+    facet_wrap(vars(project_id)) +
+    geom_boxplot() -> boxplot
+    return(list(x_y_heatmap_plot, boxplot, levels, sample_order, sample.averages@meta.data))
+}
+plot <- x_y_heatmap(ck_kegg, "Oxidative phosphorylation", "S100A+ preNeutrophil")
+```
+
+logFC dotplot
+```{r}
+category <- "Oxidative phosphorylation"
+cell_type <- "S100A+ preNeutrophil"
+ck_kegg@compareClusterResult %>%
+    filter(Description == category, Cluster ==cell_type) %>%
+    pull(core_enrichment) %>%
+    strsplit(split = "/")  %>%
+    unlist()-> genes_to_plot
+  # get gene names in symbol
+    bitr(genes_to_plot, fromType = "UNIPROT", toType="SYMBOL", OrgDb= org.Hs.eg.db) -> genes_to_plot
+
+muscat_output$celltype_de$celltype_de$de_output_tidy %>%
+  filter(contrast == "M-F") %>%
+  filter(gene %in% genes_to_plot$SYMBOL) %>%
+  ggplot(aes(x = logFC, y = gene, color = cluster_id)) +
+    geom_point()
+```
+
+
+
+## pathview
+```{r}
+library(pathview)
+library(clusterProfiler)
+date <- Sys.Date()
+#create dir for pathways
+dir.create("results/pathways", showWarnings = FALSE)
+dir.create("results/pathways/kegg", showWarnings = FALSE)
+```
+
+```{r}
+cell_type <- "S100A+ preNeutrophil"
+# get the gene list
+gene_list <- cluster_list_kegg[[cell_type]]
+a <- bitr_kegg(names(gene_list), fromType = "uniprot", toType="kegg", organism="hsa")
+names(gene_list) <- a$kegg # ther will be NAs
+```
+
+Create the pathway
+```{r}
+pathway <- "hsa01100"
+setwd("results/pathways/kegg")
+pathway_obj <- pathview(gene.data  = gene_list,
+                     pathway.id = pathway,
+                     species    = "hsa",
+                     limit      = list(gene=1, cpd=1),
+                        out.suffix = paste0(cell_type, "_", pathway, date)
+)
+setwd("/home/inf-38-2022/MScProject/Main_dir/")
+```
+
+```{r}
+```
+
+```{r}
